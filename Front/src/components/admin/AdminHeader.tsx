@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, User } from 'lucide-react';
+import { User } from 'lucide-react';
 
 export interface AdminHeaderProps {
   title: string;

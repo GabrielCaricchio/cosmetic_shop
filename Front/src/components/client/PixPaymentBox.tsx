@@ -27,6 +27,12 @@ export const PixPaymentBox: React.FC<PixPaymentBoxProps> = ({
 
   const { formatted, isExpired } = useCountdown(calculateInitialSeconds());
 
+  React.useEffect(() => {
+    if (isExpired && onExpired) {
+      onExpired();
+    }
+  }, [isExpired, onExpired]);
+
   const handleCopy = async () => {
     try {
       if (navigator.clipboard) {

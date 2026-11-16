@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useId } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, ArrowLeft, QrCode, CreditCard, Lock, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, QrCode, CreditCard, Lock } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { PixPaymentBox } from '../../components/client/PixPaymentBox';
@@ -129,7 +129,7 @@ export const CheckoutPage: React.FC = () => {
           state,
           zip_code: zipCode,
         },
-        items: itemsToBuy.map((i) => ({
+        items: itemsToBuy.map((i: any) => ({
           product_id: i.id || i.product_id,
           quantity: i.quantity,
         })),
@@ -387,7 +387,7 @@ export const CheckoutPage: React.FC = () => {
               </h2>
 
               <div className="divide-y divide-neutral-100 max-h-60 overflow-y-auto pr-1">
-                {itemsToBuy.map((it) => (
+                {itemsToBuy.map((it: any) => (
                   <div key={it.id || it.product_id} className="py-2.5 flex justify-between text-xs">
                     <span className="text-neutral-700 font-medium truncate max-w-[180px]">
                       {it.quantity}x {it.name}

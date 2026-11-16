@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle2, Package, ArrowRight, Home } from 'lucide-react';
+import { CheckCircle2, Home } from 'lucide-react';
 import { OrderStepper } from '../../components/client/OrderStepper';
 import { Button } from '../../components/common/Button';
 import { apiClient } from '../../services/apiClient';

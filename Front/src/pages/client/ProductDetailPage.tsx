@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ShoppingBag, ArrowLeft, Zap, Minus, Plus, MessageCircle } from 'lucide-react';
+import { ShoppingBag, ArrowLeft, Zap, Minus, Plus } from 'lucide-react';
 import { ProductGallery } from '../../components/client/ProductGallery';
 import { ProductAccordions } from '../../components/client/ProductAccordions';
 import { Badge } from '../../components/common/Badge';
@@ -32,7 +32,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
       stock_quantity: 5,
       description: 'Alta pigmentação com acabamento aveludado e hidratação profunda por até 12 horas.',
       ingredients: 'Cera vegetal, manteiga de karité, pigmentos minerais e vitamina E.',
-      howToUse: 'Aplique uniformemente sobre os lábios limpos e secos.',
+      how_to_use: 'Aplique uniformemente sobre os lábios limpos e secos.',
       images: [
         {
           image_url:
@@ -43,11 +43,9 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     }
   );
   const [quantity, setQuantity] = useState(1);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (slug) {
-      setLoading(true);
       apiClient
         .get(`/products/${slug}`)
         .then((res) => {
@@ -55,9 +53,6 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         })
         .catch((err) => {
           console.warn('Usando dados em cache/fallback para o produto:', err.message);
-        })
-        .finally(() => {
-          setLoading(false);
         });
     }
   }, [slug]);
