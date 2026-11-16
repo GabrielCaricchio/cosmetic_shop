@@ -1,118 +1,184 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
-import { AdminSidebar } from '../../components/admin/AdminSidebar';
-import { AdminHeader } from '../../components/admin/AdminHeader';
-import { ProductTable } from '../../components/admin/ProductTable';
-import { ProductModal } from '../../components/admin/ProductModal';
-import { Button } from '../../components/common/Button';
-import { apiClient } from '../../services/apiClient';
+import AdminSidebar from '../../components/admin/AdminSidebar';
+import ProductRow from '../../components/admin/ProductRow';
+import ProductModal from '../../components/admin/ProductModal';
+import Button from '../../components/common/Button';
+import Spinner from '../../components/common/Spinner';
+import { productApi } from '../../services/productApi';
+import { adminApi } from '../../services/adminApi';
 import { Product, Category } from '../../types/product';
+import { Plus, Search, Filter } from 'lucide-react';
 
 export const AdminProductsPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<number | ''>('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  const fetchProducts = async () => {
-    setLoading(true);
+  const loadData = async () => {
+    setIsLoading(true);
     try {
-      const [prodRes, catRes] = await Promise.all([
-        apiClient.get('/products'),
-        apiClient.get('/categories'),
+      const [prodsData, catsData] = await Promise.all([
+        productApi.getProducts({
+          search: searchTerm || undefined,
+          category_id: selectedCategory ? Number(selectedCategory) : undefined,
+          limit: 100,
+        }),
+        productApi.getCategories().catch(() => []),
       ]);
-      setProducts(prodRes.data.items || prodRes.data || []);
-      setCategories(catRes.data.items || catRes.data || []);
-    } catch (err) {
-      console.warn('Falha ao carregar produtos do backoffice:', err);
+      setProducts(prodsData.items || []);
+      setCategories(catsData);
+    } catch {
+      // Mock para fallback caso backend desconectado
+      setProducts([]);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    loadData();
+  }, [searchTerm, selectedCategory]);
 
-  const handleSaveProduct = async (productData: Partial<Product>) => {
-    if (editingProduct) {
-      const prodId = editingProduct.id || editingProduct.product_id;
-      await apiClient.put(`/admin/products/${prodId}`, productData);
-    } else {
-      await apiClient.post('/admin/products', productData);
-    }
-    fetchProducts();
+  const handleOpenCreate = () => {
+    setEditingProduct(null);
+    setIsModalOpen(true);
   };
 
-  const handleDeleteProduct = async (product: Product) => {
-    const prodId = product.id || product.product_id;
-    if (window.confirm(`Deseja realmente desativar ${product.name}?`)) {
-      try {
-        await apiClient.delete(`/admin/products/${prodId}`);
-        fetchProducts();
-      } catch (err) {
-        console.warn('Erro ao deletar:', err);
-      }
+  const handleOpenEdit = (prod: Product) => {
+    setEditingProduct(prod);
+    setIsModalOpen(true);
+  };
+
+  const handleSaveProduct = async (formData: any) => {
+    if (editingProduct) {
+      await adminApi.updateProduct(editingProduct.product_id, formData);
+    } else {
+      await adminApi.createProduct(formData);
+    }
+    await loadData();
+  };
+
+  const handleDeleteProduct = async (productId: number) => {
+    if (confirm('Deseja realmente desativar este cosmético da vitrine da loja?')) {
+      await adminApi.deleteProduct(productId);
+      await loadData();
     }
   };
 
   return (
-    <div className="min-h-screen flex bg-neutral-100">
+    <div className="min-h-screen bg-neutral-100 flex">
       <AdminSidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <AdminHeader title="Catálogo de Cosméticos" />
 
-        <main className="p-6 sm:p-8 space-y-6 overflow-y-auto">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold text-neutral-900 font-serif">
-                Gestão de Produtos e Inventário
-              </h2>
-              <p className="text-xs text-neutral-500">
-                Cadastre, edite preços e controle estoque disponível e crítico.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={fetchProducts}
-                className="flex items-center gap-1.5 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-                Atualizar
-              </button>
-              <Button
-                onClick={() => {
-                  setEditingProduct(null);
-                  setIsModalOpen(true);
-                }}
-                className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-2 py-2.5 px-4 shadow-sm"
-              >
-                <Plus className="h-4 w-4" /> Novo Cosmético
-              </Button>
-            </div>
+      <main className="flex-1 p-6 sm:p-8 overflow-y-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-serif font-bold text-neutral-900">
+              Catálogo de Cosméticos
+            </h1>
+            <p className="text-xs text-neutral-500 mt-1">
+              Cadastro, precificação, inventário e controle de fórmulas cosméticas
+            </p>
           </div>
 
-          <ProductTable
-            products={products}
-            onEdit={(p) => {
-              setEditingProduct(p);
-              setIsModalOpen(true);
-            }}
-            onDelete={handleDeleteProduct}
-          />
+          <Button
+            variant="primary"
+            size="md"
+            onClick={handleOpenCreate}
+            leftIcon={<Plus className="w-4 h-4" />}
+          >
+            Cadastrar Cosmético
+          </Button>
+        </div>
 
-          <ProductModal
-            isOpen={isModalOpen}
-            onClose={() => setIsModalOpen(false)}
-            onSave={handleSaveProduct}
-            initialProduct={editingProduct}
-            categories={categories}
-          />
-        </main>
-      </div>
+        {/* Barra de Filtros */}
+        <div className="bg-white p-4 rounded-xl border border-neutral-200/90 shadow-xs mb-6 flex flex-col sm:flex-row items-center gap-4">
+          <div className="relative flex-1 w-full">
+            <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Buscar por nome, marca ou ingrediente..."
+              className="w-full h-10 pl-10 pr-4 text-xs rounded-md border border-neutral-300 bg-neutral-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-700"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Filter className="w-4 h-4 text-neutral-500" />
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value ? Number(e.target.value) : '')}
+              className="h-10 text-xs rounded-md border border-neutral-300 bg-white px-3 text-neutral-800 focus:outline-none focus:ring-2 focus:ring-brand-700"
+            >
+              <option value="">Todas as Categorias</option>
+              {categories.map((c) => (
+                <option key={c.category_id} value={c.category_id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Tabela de Produtos */}
+        <div className="bg-white rounded-xl border border-neutral-200/90 shadow-xs overflow-hidden">
+          {isLoading ? (
+            <div className="py-20 flex flex-col items-center justify-center">
+              <Spinner size="lg" className="text-brand-700 mb-3" />
+              <span className="text-xs text-neutral-500">Carregando catálogo de produtos...</span>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-neutral-50 text-[11px] font-semibold uppercase tracking-wider text-neutral-500 border-b border-neutral-200">
+                    <th className="px-6 py-3.5">Cosmético</th>
+                    <th className="px-6 py-3.5">Preço Unitário</th>
+                    <th className="px-6 py-3.5">Estoque Físico</th>
+                    <th className="px-6 py-3.5">Status Vitrine</th>
+                    <th className="px-6 py-3.5 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100 text-xs text-neutral-700">
+                  {products.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-10 text-center text-neutral-400">
+                        Nenhum cosmético encontrado para os critérios pesquisados.
+                      </td>
+                    </tr>
+                  ) : (
+                    products.map((prod) => (
+                      <ProductRow
+                        key={prod.product_id}
+                        product={prod}
+                        onEdit={handleOpenEdit}
+                        onDelete={handleDeleteProduct}
+                      />
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Modal de Cadastro / Edição */}
+        <ProductModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          onSave={handleSaveProduct}
+          product={editingProduct}
+          categories={categories}
+        />
+      </main>
     </div>
   );
 };
+
+export default AdminProductsPage;

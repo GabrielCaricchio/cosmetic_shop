@@ -1,92 +1,105 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Sparkles } from 'lucide-react';
-import { Input } from '../../components/common/Input';
-import { Button } from '../../components/common/Button';
 import { useAuth } from '../../context/AuthContext';
+import Input from '../../components/common/Input';
+import Button from '../../components/common/Button';
+import { Mail, Lock, User, Phone, ShieldCheck, ArrowLeft } from 'lucide-react';
 
 export const AuthPage: React.FC = () => {
   const navigate = useNavigate();
-  const { login, register, isLoading } = useAuth();
+  const { login, register, isAuthenticated } = useAuth();
   const [tab, setTab] = useState<'login' | 'register'>('login');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [cpf, setCpf] = useState('');
   const [phone, setPhone] = useState('');
-  const [lgpdConsent, setLgpdConsent] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [lgpdConsent, setLgpdConsent] = useState(true);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (isAuthenticated) {
+    navigate('/');
+    return null;
+  }
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
+    setError(null);
+    setIsLoading(true);
     try {
       await login({ email, password });
       navigate('/');
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.detail || 'E-mail ou senha incorretos.');
+      setError(err.message || 'Falha ao realizar login. Verifique seus dados.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
     if (!lgpdConsent) {
-      setErrorMsg('É obrigatório consentir com os termos da LGPD para criar uma conta.');
+      setError('É necessário aceitar os termos de consentimento LGPD para se cadastrar.');
       return;
     }
+
+    setError(null);
+    setIsLoading(true);
     try {
       await register({
         name,
         email,
         password,
-        cpf,
         phone,
         lgpd_consent: lgpdConsent,
       });
       navigate('/');
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.detail || 'Erro ao registrar conta.');
+      setError(err.message || 'Falha no cadastro. Tente novamente.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="inline-flex items-center gap-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors mb-6 mx-auto"
-        >
-          <ArrowLeft className="h-4 w-4" /> Voltar para o início
-        </button>
-
-        <div className="flex justify-center items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-rose-500 to-rose-400 text-white shadow-md">
-            <Sparkles className="h-6 w-6" />
-          </div>
-          <span className="text-2xl font-bold tracking-tight text-neutral-900 font-serif">
-            Aura Cosméticos
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+        <a href="/" className="inline-flex items-center gap-2 group mb-4">
+          <span className="w-10 h-10 rounded-full bg-brand-700 text-white flex items-center justify-center font-serif text-xl font-bold shadow-sm">
+            A
           </span>
-        </div>
-        <h2 className="mt-4 text-center text-xl font-bold text-neutral-800">
-          {tab === 'login' ? 'Entre na sua conta' : 'Crie sua conta de beleza'}
+          <div className="text-left">
+            <span className="font-serif text-2xl font-bold text-neutral-900 block leading-none">
+              Aura
+            </span>
+            <span className="text-[10px] uppercase tracking-widest text-brand-600 font-semibold">
+              Cosméticos
+            </span>
+          </div>
+        </a>
+        <h2 className="text-xl font-bold font-serif text-neutral-900">
+          {tab === 'login' ? 'Bem-vinda de volta' : 'Crie sua conta na Aura'}
         </h2>
+        <p className="text-xs text-neutral-500 mt-1">
+          Acesse sua sacola, histórico de compras e acompanhamento Pix
+        </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md px-4">
-        <div className="bg-white py-8 px-6 shadow-xl rounded-3xl border border-neutral-100 sm:px-10">
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white py-8 px-6 shadow-sm border border-neutral-200/90 rounded-2xl sm:px-10">
+          {/* Abas Alternáveis */}
           <div className="flex border-b border-neutral-200 mb-6">
             <button
               type="button"
               onClick={() => {
                 setTab('login');
-                setErrorMsg('');
+                setError(null);
               }}
-              className={`flex-1 pb-3 text-center text-sm font-semibold border-b-2 transition-all ${
+              className={`flex-1 pb-3 text-sm font-semibold text-center border-b-2 transition-all ${
                 tab === 'login'
-                  ? 'border-rose-600 text-rose-600'
+                  ? 'border-brand-700 text-brand-800'
                   : 'border-transparent text-neutral-400 hover:text-neutral-700'
               }`}
             >
@@ -96,11 +109,11 @@ export const AuthPage: React.FC = () => {
               type="button"
               onClick={() => {
                 setTab('register');
-                setErrorMsg('');
+                setError(null);
               }}
-              className={`flex-1 pb-3 text-center text-sm font-semibold border-b-2 transition-all ${
+              className={`flex-1 pb-3 text-sm font-semibold text-center border-b-2 transition-all ${
                 tab === 'register'
-                  ? 'border-rose-600 text-rose-600'
+                  ? 'border-brand-700 text-brand-800'
                   : 'border-transparent text-neutral-400 hover:text-neutral-700'
               }`}
             >
@@ -108,21 +121,22 @@ export const AuthPage: React.FC = () => {
             </button>
           </div>
 
-          {errorMsg && (
-            <div className="mb-4 rounded-xl bg-red-50 p-3 text-xs text-red-700 font-medium border border-red-200">
-              {errorMsg}
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
+              {error}
             </div>
           )}
 
           {tab === 'login' ? (
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLoginSubmit} className="space-y-4">
               <Input
                 label="E-mail"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu@email.com"
+                placeholder="seu.email@exemplo.com.br"
+                leftIcon={<Mail className="w-4 h-4" />}
               />
               <Input
                 label="Senha"
@@ -130,24 +144,24 @@ export const AuthPage: React.FC = () => {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Sua senha secreta"
+                leftIcon={<Lock className="w-4 h-4" />}
               />
-              <Button
-                type="submit"
-                isLoading={isLoading}
-                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 mt-2"
-              >
+
+              <Button type="submit" variant="primary" size="lg" fullWidth isLoading={isLoading}>
                 Entrar
               </Button>
             </form>
           ) : (
-            <form onSubmit={handleRegister} className="space-y-3.5">
+            <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
               <Input
                 label="Nome Completo"
+                type="text"
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Seu nome"
+                placeholder="Maria Silva"
+                leftIcon={<User className="w-4 h-4" />}
               />
               <Input
                 label="E-mail"
@@ -155,54 +169,69 @@ export const AuthPage: React.FC = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu@email.com"
+                placeholder="maria.silva@exemplo.com.br"
+                leftIcon={<Mail className="w-4 h-4" />}
               />
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label="CPF"
-                  value={cpf}
-                  onChange={(e) => setCpf(e.target.value)}
-                  placeholder="000.000.000-00"
-                />
-                <Input
-                  label="WhatsApp"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="(11) 99999-9999"
-                />
-              </div>
               <Input
-                label="Senha"
+                label="WhatsApp / Telefone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="(11) 98765-4321"
+                leftIcon={<Phone className="w-4 h-4" />}
+              />
+              <Input
+                label="Senha (mínimo 6 caracteres)"
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Mínimo 8 caracteres"
+                placeholder="Crie uma senha forte"
+                leftIcon={<Lock className="w-4 h-4" />}
               />
-              <div className="rounded-xl bg-neutral-50 p-3 border border-neutral-200 mt-2">
+
+              <div className="pt-2">
                 <label className="flex items-start gap-2.5 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={lgpdConsent}
                     onChange={(e) => setLgpdConsent(e.target.checked)}
-                    className="mt-1 h-4 w-4 rounded border-neutral-300 text-rose-600 focus:ring-rose-500"
+                    className="mt-0.5 rounded border-neutral-300 text-brand-700 focus:ring-brand-700"
                   />
-                  <span className="text-xs text-neutral-600 leading-snug">
-                    Concordo com a coleta e tratamento dos meus dados nos termos da LGPD.
+                  <span className="text-xs text-neutral-600 leading-tight">
+                    Concordo com os{' '}
+                    <a href="/termos" target="_blank" className="text-brand-700 underline font-medium">
+                      Termos de Uso
+                    </a>{' '}
+                    e com o tratamento dos meus dados para fins de compra e entrega conforme a{' '}
+                    <strong>LGPD</strong>.
                   </span>
                 </label>
               </div>
-              <Button
-                type="submit"
-                isLoading={isLoading}
-                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 mt-2"
-              >
-                Cadastrar
+
+              <Button type="submit" variant="primary" size="lg" fullWidth isLoading={isLoading} className="mt-4">
+                Criar Conta
               </Button>
+
+              <div className="flex items-center justify-center gap-1.5 text-[11px] text-neutral-400 pt-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Criptografia Argon2id de ponta a ponta</span>
+              </div>
             </form>
           )}
+
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => navigate('/')}
+              className="text-xs text-neutral-500 hover:text-brand-700 inline-flex items-center gap-1 font-medium"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Voltar para a loja
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 };
+
+export default AuthPage;

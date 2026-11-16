@@ -1,113 +1,189 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle2, Home, MessageCircle, Sparkles } from 'lucide-react';
-import { OrderStepper } from '../../components/client/OrderStepper';
-import { Button } from '../../components/common/Button';
-import { apiClient } from '../../services/apiClient';
-import { OrderDetail } from '../../types/order';
+import React, { useState, useEffect } from 'react';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useOrderPolling } from '../../hooks/useOrderPolling';
+import { orderApi } from '../../services/orderApi';
+import { supportApi } from '../../services/supportApi';
+import { Order } from '../../types/order';
+import PixPaymentBox from '../../components/client/PixPaymentBox';
+import OrderStepper from '../../components/client/OrderStepper';
+import Button from '../../components/common/Button';
+import Spinner from '../../components/common/Spinner';
+import { CheckCircle2, MessageCircle, ArrowLeft } from 'lucide-react';
 
 export const OrderSuccessPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
-  const [order, setOrder] = useState<OrderDetail | null>(null);
+
+  const checkoutResponse = (location.state as any)?.checkoutResponse;
+
+  const [order, setOrder] = useState<Order | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  // Polling em tempo real para verificar se o Pix foi pago sem recarregar a página
+  const { order: polledOrder } = useOrderPolling(id, {
+    intervalMs: 3000,
+    enabled: true,
+  });
+
+  const activeOrder = polledOrder || order;
 
   useEffect(() => {
-    if (id) {
-      apiClient
-        .get(`/orders/${id}`)
-        .then((res) => {
-          setOrder(res.data);
-        })
-        .catch((err) => {
-          console.warn('Erro ao carregar detalhes do pedido:', err);
-        });
-    }
-  }, [id]);
+    if (!id) return;
 
-  const formatPrice = (val?: number) => {
-    if (val === undefined) return 'R$ 0,00';
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(val);
-  };
+    orderApi
+      .getOrder(id)
+      .then((data) => {
+        setOrder(data);
+      })
+      .catch(() => {
+        // Fallback baseado no state do checkout
+        if (checkoutResponse) {
+          setOrder({
+            order_id: checkoutResponse.order_id,
+            total_amount: checkoutResponse.total_amount,
+            status: checkoutResponse.status,
+            shipping_address: {
+              street: 'Endereço informado no checkout',
+              number: '',
+              neighborhood: '',
+              city: 'São Paulo',
+              state: 'SP',
+              zip_code: '',
+            },
+            items: [],
+            payment_method: checkoutResponse.payment_method,
+            pix_qr_code_base64: checkoutResponse.pix_qr_code_base64,
+            pix_copy_paste: checkoutResponse.pix_copy_paste,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        }
+      })
+      .finally(() => {
+        setInitialLoading(false);
+      });
+  }, [id, checkoutResponse]);
+
+  if (initialLoading && !activeOrder) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center">
+        <Spinner size="lg" className="text-brand-700 mb-3" />
+        <span className="text-xs text-neutral-500">Localizando seu pedido...</span>
+      </div>
+    );
+  }
+
+  const isPixPending =
+    activeOrder?.status === 'pending' &&
+    (activeOrder?.pix_copy_paste || checkoutResponse?.pix_copy_paste);
+
+  const isApproved = ['paid', 'approved', 'preparing', 'shipped', 'delivered'].includes(
+    activeOrder?.status || ''
+  );
 
   return (
-    <div className="min-h-screen bg-warm-50 py-10 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div className="rounded-3xl bg-white p-6 sm:p-10 shadow-luxury border border-warm-200/90 text-center">
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-botanic-50 text-botanic-800 border border-botanic-200/80 mb-5 shadow-soft">
-            <CheckCircle2 className="h-10 w-10 text-emerald-700" />
+    <div className="min-h-screen bg-neutral-50 py-10">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Banner de Celebração de Pagamento Aprovado */}
+        {isApproved && (
+          <div className="mb-8 p-6 bg-gradient-to-r from-emerald-700 to-teal-800 text-white rounded-2xl shadow-md text-center animate-fade-in">
+            <div className="inline-flex p-3 rounded-full bg-white/20 text-white mb-3">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-serif font-bold">
+              Pagamento Confirmado com Sucesso!
+            </h1>
+            <p className="text-xs sm:text-sm text-emerald-100 mt-2 max-w-md mx-auto">
+              Sua reserva no Redis foi consolidada definitivamente no estoque físico. Seu pedido já está
+              sendo separado pela nossa equipe!
+            </p>
+          </div>
+        )}
+
+        {/* Card Principal do Pedido */}
+        <div className="bg-white rounded-2xl border border-neutral-200/90 shadow-xs p-6 sm:p-8 mb-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-neutral-200 gap-4">
+            <div>
+              <span className="text-xs font-semibold text-neutral-400 uppercase tracking-widest block">
+                Pedido Gerado
+              </span>
+              <h2 className="text-xl sm:text-2xl font-serif font-bold text-neutral-900 mt-0.5">
+                #{activeOrder?.order_id.slice(0, 13)}
+              </h2>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <a
+                href={supportApi.getWhatsAppUrl({
+                  order_id: activeOrder?.order_id,
+                })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold hover:bg-emerald-100 transition-colors"
+              >
+                <MessageCircle className="w-4 h-4 text-emerald-600" />
+                <span>Acompanhar no WhatsApp</span>
+              </a>
+            </div>
           </div>
 
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-champagne-100 px-3.5 py-1 text-xs font-semibold text-champagne-800 mb-3">
-            <Sparkles className="h-3.5 w-3.5 text-champagne-600" /> Pedido Registrado com Sucesso
-          </span>
-
-          <h1 className="text-2xl sm:text-3xl font-bold text-warm-900 font-serif leading-tight">
-            Obrigada pela sua preferência!
-          </h1>
-          <p className="mt-2 text-xs sm:text-sm text-warm-600 max-w-md mx-auto leading-relaxed">
-            Seu pedido foi registrado e estamos preparando seus cosméticos com todo o cuidado e carinho.
-          </p>
-
-          <div className="mt-6 rounded-2xl bg-warm-50 p-4 border border-warm-200/80 inline-block text-left w-full sm:w-auto">
-            <span className="text-[11px] text-warm-500 font-bold uppercase tracking-wider block">Identificador do Pedido:</span>
-            <span className="text-base font-bold text-botanic-950 font-mono">
-              #{order?.order_number || id}
-            </span>
+          {/* Stepper Visual de Acompanhamento */}
+          <div className="py-6">
+            <OrderStepper status={activeOrder?.status || 'pending'} />
           </div>
 
-          {/* Stepper Logístico */}
-          <div className="mt-8 border-t border-warm-100 pt-6">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-warm-700 text-left mb-4">
-              Status de Acompanhamento:
-            </h2>
-            <OrderStepper status={order?.status || 'approved'} />
-          </div>
-
-          {/* Resumo dos Itens */}
-          {order && (
-            <div className="mt-6 border-t border-warm-100 pt-6 text-left">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-warm-700 mb-3">Itens Adquiridos:</h3>
-              <div className="divide-y divide-warm-100">
-                {order.items?.map((item) => (
-                  <div key={item.id} className="py-2.5 flex justify-between text-xs text-warm-700">
-                    <span>
-                      {item.quantity}x {item.product?.name || 'Cosmético'}
-                    </span>
-                    <span className="font-bold text-warm-900 font-serif">{formatPrice(item.total_price)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 pt-3 border-t border-warm-100 flex justify-between text-sm font-bold text-warm-900 font-serif">
-                <span>Total:</span>
-                <span className="text-base text-botanic-900">{formatPrice(order.total_amount)}</span>
-              </div>
+          {/* Bloco de Pagamento Pix (enquanto status estiver pending) */}
+          {isPixPending && (
+            <div className="mt-4 pt-6 border-t border-neutral-200">
+              <PixPaymentBox
+                qrCodeBase64={
+                  activeOrder?.pix_qr_code_base64 || checkoutResponse?.pix_qr_code_base64
+                }
+                copyPasteCode={
+                  activeOrder?.pix_copy_paste || checkoutResponse?.pix_copy_paste
+                }
+                expiresAt={
+                  checkoutResponse?.expires_at || new Date(Date.now() + 1800000).toISOString()
+                }
+                totalAmount={activeOrder?.total_amount}
+              />
             </div>
           )}
 
-          {/* Ações */}
-          <div className="mt-8 flex flex-col sm:flex-row gap-3 pt-4 border-t border-warm-100">
-            <Button
-              variant="outline"
-              onClick={() => navigate('/')}
-              className="flex-1 flex items-center justify-center gap-2 border-warm-300 text-warm-800"
-            >
-              <Home className="h-4 w-4" /> Voltar à Página Inicial
-            </Button>
-            <Button
-              onClick={() => {
-                const msg = `Olá! Gostaria de acompanhar o envio do meu pedido #${order?.order_number || id}`;
-                window.open(`https://wa.me/5511999999999?text=${encodeURIComponent(msg)}`, '_blank');
-              }}
-              className="flex-1 bg-gradient-to-r from-botanic-900 to-botanic-950 text-champagne-300 flex items-center justify-center gap-2 font-bold shadow-soft"
-            >
-              <MessageCircle className="h-4 w-4" /> Suporte via WhatsApp
-            </Button>
-          </div>
+          {/* Detalhes de Entrega */}
+          {activeOrder?.shipping_address && (
+            <div className="mt-8 pt-6 border-t border-neutral-200">
+              <h3 className="text-xs font-bold text-neutral-700 uppercase tracking-wider mb-2">
+                Endereço de Destino
+              </h3>
+              <p className="text-xs text-neutral-600 leading-relaxed">
+                {activeOrder.shipping_address.street}, {activeOrder.shipping_address.number}
+                {activeOrder.shipping_address.complement
+                  ? ` - ${activeOrder.shipping_address.complement}`
+                  : ''}
+                <br />
+                {activeOrder.shipping_address.neighborhood} — {activeOrder.shipping_address.city} /{' '}
+                {activeOrder.shipping_address.state}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Botão Retornar à Loja */}
+        <div className="text-center">
+          <Button
+            variant="outline"
+            size="md"
+            onClick={() => navigate('/')}
+            leftIcon={<ArrowLeft className="w-4 h-4" />}
+          >
+            Voltar para o Início da Loja
+          </Button>
         </div>
       </div>
     </div>
   );
 };
+
+export default OrderSuccessPage;

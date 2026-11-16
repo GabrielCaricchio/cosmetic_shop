@@ -1,47 +1,85 @@
-import { useEffect, useRef } from 'react';
-import { apiClient } from '../services/apiClient';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { orderApi } from '../services/orderApi';
+import { Order } from '../types/order';
+
+interface UseOrderPollingOptions {
+  intervalMs?: number;
+  enabled?: boolean;
+  onStatusChange?: (order: Order) => void;
+  onPaymentApproved?: (order: Order) => void;
+}
 
 export function useOrderPolling(
-  orderId: string | null | undefined,
-  onApproved: () => void,
-  intervalMs = 3000
+  orderId: string | undefined,
+  options: UseOrderPollingOptions = {}
 ) {
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const {
+    intervalMs = 3000,
+    enabled = true,
+    onStatusChange,
+    onPaymentApproved,
+  } = options;
+
+  const [order, setOrder] = useState<Order | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const isPollingRef = useRef<boolean>(enabled);
+
+  const stopPolling = useCallback(() => {
+    isPollingRef.current = false;
+  }, []);
 
   useEffect(() => {
-    if (!orderId) return;
+    if (!orderId || !enabled) {
+      setIsLoading(false);
+      return;
+    }
 
-    let isPolling = true;
+    isPollingRef.current = true;
+    let timerId: NodeJS.Timeout;
 
-    const checkOrderStatus = async () => {
+    const checkStatus = async () => {
       try {
-        const res = await apiClient.get(`/orders/${orderId}`);
-        const status = res.data?.status;
+        const fetched = await orderApi.getOrder(orderId);
+        setOrder(fetched);
+        setError(null);
 
-        if (status === 'approved') {
-          isPolling = false;
-          onApproved();
-          return;
+        onStatusChange?.(fetched);
+
+        // Se o status for aprovado / pago
+        if (['paid', 'approved', 'preparing', 'shipped', 'delivered'].includes(fetched.status)) {
+          onPaymentApproved?.(fetched);
         }
 
-        if (status === 'cancelled' || status === 'rejected') {
-          isPolling = false;
-          return;
+        // Se atingiu estado final, pode cessar polling
+        if (['paid', 'approved', 'delivered', 'cancelled', 'rejected', 'refunded'].includes(fetched.status)) {
+          isPollingRef.current = false;
         }
-      } catch (err) {
-        console.warn('Erro ao consultar status do pedido:', err);
+      } catch (err: any) {
+        setError(err.message || 'Erro ao sincronizar status do pedido.');
+      } finally {
+        setIsLoading(false);
       }
 
-      if (isPolling) {
-        timerRef.current = setTimeout(checkOrderStatus, intervalMs);
+      if (isPollingRef.current) {
+        timerId = setTimeout(checkStatus, intervalMs);
       }
     };
 
-    timerRef.current = setTimeout(checkOrderStatus, intervalMs);
+    checkStatus();
 
     return () => {
-      isPolling = false;
-      if (timerRef.current) clearTimeout(timerRef.current);
+      isPollingRef.current = false;
+      if (timerId) clearTimeout(timerId);
     };
-  }, [orderId, onApproved, intervalMs]);
+  }, [orderId, enabled, intervalMs]);
+
+  return {
+    order,
+    isLoading,
+    error,
+    stopPolling,
+  };
 }
+
+export default useOrderPolling;

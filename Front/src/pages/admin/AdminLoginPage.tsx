@@ -1,107 +1,102 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck } from 'lucide-react';
-import { Input } from '../../components/common/Input';
-import { Button } from '../../components/common/Button';
-import { apiClient } from '../../services/apiClient';
+import { useAuth } from '../../context/AuthContext';
+import Input from '../../components/common/Input';
+import Button from '../../components/common/Button';
+import { Mail, Lock, ShieldCheck } from 'lucide-react';
 
 export const AdminLoginPage: React.FC = () => {
   const navigate = useNavigate();
+  const { adminLogin, isAdmin } = useAuth();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  if (isAdmin) {
+    navigate('/admin/dashboard');
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
+    setError(null);
     setIsLoading(true);
 
     try {
-      const res = await apiClient.post('/admin/login', {
-        email,
-        password,
-      });
-
-      const { access_token, user } = res.data;
-      const adminUser = user || {
-        id: res.data.user_id,
-        user_id: res.data.user_id,
-        name: res.data.name,
-        role: res.data.role,
-      };
-      localStorage.setItem('admin_token', access_token);
-      localStorage.setItem('admin_user', JSON.stringify(adminUser));
-
+      await adminLogin({ email, password });
       navigate('/admin/dashboard');
     } catch (err: any) {
-      setErrorMsg(
-        err.response?.data?.detail || 'Credenciais de administrador inválidas.'
-      );
+      setError(err.message || 'Credenciais administrativas incorretas.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-3xl p-8 shadow-2xl border border-neutral-800">
-        <div className="text-center mb-8">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-600 text-white shadow-lg mb-3">
-            <ShieldCheck className="h-7 w-7" />
-          </div>
-          <h1 className="text-xl font-bold text-neutral-900 font-serif">
-            Aura Backoffice
-          </h1>
-          <p className="text-xs text-neutral-500 mt-1">
-            Acesso restrito à equipe de gestão e administradores
-          </p>
+    <div className="min-h-screen bg-brand-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-brand-700 text-white font-serif text-2xl font-bold shadow-md mb-3">
+          A
         </div>
+        <h1 className="text-2xl font-serif font-bold text-white tracking-wide">
+          Aura Backoffice
+        </h1>
+        <p className="text-xs text-accent-400 mt-1 uppercase tracking-widest font-semibold">
+          Área Restrita aos Gestores e Operadores
+        </p>
+      </div>
 
-        {errorMsg && (
-          <div className="mb-6 rounded-xl bg-red-50 p-3 text-xs text-red-700 font-medium border border-red-200">
-            {errorMsg}
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white py-8 px-6 shadow-2xl rounded-2xl border border-neutral-200 sm:px-10">
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded-md">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              label="E-mail Corporativo"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@auracosmeticos.com.br"
+              leftIcon={<Mail className="w-4 h-4" />}
+            />
+
+            <Input
+              label="Senha de Acesso"
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••••••"
+              leftIcon={<Lock className="w-4 h-4" />}
+            />
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              fullWidth
+              isLoading={isLoading}
+              className="mt-6"
+            >
+              Acessar Painel
+            </Button>
+          </form>
+
+          <div className="mt-6 pt-4 border-t border-neutral-100 flex items-center justify-center gap-2 text-[11px] text-neutral-400">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>Sessão protegida por RBAC e JWT criptografado</span>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <Input
-            label="E-mail Corporativo"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="admin@auracosmeticos.com"
-          />
-
-          <Input
-            label="Senha de Acesso"
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••••••"
-          />
-
-          <Button
-            type="submit"
-            isLoading={isLoading}
-            className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 mt-4"
-          >
-            Entrar no Painel Seguro
-          </Button>
-        </form>
-
-        <div className="mt-8 text-center">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="text-xs text-neutral-400 hover:text-neutral-600"
-          >
-            ← Voltar para a loja pública
-          </button>
         </div>
       </div>
     </div>
   );
 };
+
+export default AdminLoginPage;

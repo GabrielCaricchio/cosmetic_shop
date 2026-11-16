@@ -1,476 +1,459 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, ArrowLeft, QrCode, CreditCard, Lock, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
-import { PixPaymentBox } from '../../components/client/PixPaymentBox';
-import { Input } from '../../components/common/Input';
-import { Button } from '../../components/common/Button';
-import { apiClient } from '../../services/apiClient';
-import { useOrderPolling } from '../../hooks/useOrderPolling';
-
-function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
+import { checkoutApi } from '../../services/checkoutApi';
+import Input from '../../components/common/Input';
+import Button from '../../components/common/Button';
+import { ShippingAddress, CustomerInfo } from '../../types/checkout';
+import {
+  ShieldCheck,
+  QrCode,
+  CreditCard,
+  User,
+  ArrowLeft,
+  AlertCircle,
+} from 'lucide-react';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
-  const { cartItems, totalAmount, clearCart } = useCart();
+  const { items, totalAmount, clearCart } = useCart();
   const { user } = useAuth();
 
-  // Item de compra direta da PDP (Comprar Agora)
-  const [directItem] = useState<{ product: any; quantity: number } | null>(() => {
-    try {
-      const stored = sessionStorage.getItem('direct_checkout_item');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
+  // Verifica se é compra direta de 1 clique ("Comprar Agora")
+  const [directItem, setDirectItem] = useState<{ product: any; quantity: number } | null>(null);
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem('direct_checkout_item');
+    if (saved) {
+      try {
+        setDirectItem(JSON.parse(saved));
+      } catch {}
     }
+  }, []);
+
+  // Dados do Cliente
+  const [customer, setCustomer] = useState<CustomerInfo>({
+    name: user?.name || '',
+    email: user?.email || '',
+    phone: user?.phone || '',
+    lgpd_consent: true,
   });
 
-  const [idempotencyKey] = useState<string>(() => generateUUID());
+  // Endereço de Entrega
+  const [address, setAddress] = useState<ShippingAddress>({
+    street: '',
+    number: '',
+    complement: '',
+    neighborhood: '',
+    city: '',
+    state: 'SP',
+    zip_code: '',
+  });
 
-  // Form State
-  const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
-  const [cpf, setCpf] = useState(user?.cpf || '');
-  const [phone, setPhone] = useState(user?.phone || '');
-  const [lgpdConsent, setLgpdConsent] = useState(user?.lgpd_consent || false);
-
-  // Endereço
-  const [street, setStreet] = useState('');
-  const [number, setNumber] = useState('');
-  const [complement, setComplement] = useState('');
-  const [neighborhood, setNeighborhood] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('SP');
-  const [zipCode, setZipCode] = useState('');
-
-  // Pagamento
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credit_card'>('pix');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isCepLoading, setIsCepLoading] = useState(false);
 
-  // Pedido gerado
-  const [createdOrder, setCreatedOrder] = useState<any | null>(null);
+  // Auto-preenchimento por CEP (ViaCEP)
+  const handleCepBlur = async () => {
+    const cleanCep = address.zip_code.replace(/\D/g, '');
+    if (cleanCep.length === 8) {
+      setIsCepLoading(true);
+      try {
+        const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+        const data = await res.json();
+        if (!data.erro) {
+          setAddress((prev) => ({
+            ...prev,
+            street: data.logradouro || prev.street,
+            neighborhood: data.bairro || prev.neighborhood,
+            city: data.localidade || prev.city,
+            state: data.uf || prev.state,
+          }));
+        }
+      } catch {
+        // Fallback para preenchimento manual
+      } finally {
+        setIsCepLoading(false);
+      }
+    }
+  };
 
-  const itemsToBuy = directItem
+  // Itens em checkout
+  const effectiveItems = directItem
     ? [
         {
-          id: directItem.product.id || directItem.product.product_id,
+          product_id: directItem.product.product_id || Number(directItem.product.id),
           name: directItem.product.name,
-          price: directItem.product.promotional_price ?? directItem.product.price,
+          price: directItem.product.price,
           quantity: directItem.quantity,
           image_url: directItem.product.images?.[0]?.image_url,
         },
       ]
-    : cartItems;
+    : items;
 
-  const checkoutTotal = directItem
-    ? (directItem.product.promotional_price ?? directItem.product.price) * directItem.quantity
+  const effectiveTotal = directItem
+    ? directItem.product.price * directItem.quantity
     : totalAmount;
 
-  const pixCheckoutTotal = checkoutTotal * 0.95;
+  const formattedTotal = new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(effectiveTotal);
 
-  // Polling automático da aprovação do Pix a cada 3s
-  useOrderPolling(
-    createdOrder?.order_id,
-    () => {
-      clearCart();
-      sessionStorage.removeItem('direct_checkout_item');
-      navigate(`/pedido-confirmado/${createdOrder.order_id}`);
-    },
-    3000
-  );
-
-  const formatPrice = (val: number) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    }).format(val);
-  };
-
-  const handleCheckout = async (e: React.FormEvent) => {
+  const handleSubmitCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
-
-    if (!user && !lgpdConsent) {
-      setErrorMsg('É necessário aceitar os termos de consentimento LGPD para continuar.');
+    if (effectiveItems.length === 0) {
+      setErrorMessage('Nenhum item selecionado para compra.');
       return;
     }
 
-    if (itemsToBuy.length === 0) {
-      setErrorMsg('Sua sacola está vazia.');
+    if (!address.street || !address.number || !address.neighborhood || !address.city || !address.zip_code) {
+      setErrorMessage('Preencha todos os campos obrigatórios do endereço de entrega.');
       return;
     }
 
+    setErrorMessage(null);
     setIsSubmitting(true);
 
-    try {
-      const payload: any = {
-        customer_name: name,
-        customer_email: email,
-        customer_cpf: cpf,
-        customer_phone: phone,
-        shipping_address: {
-          street,
-          number,
-          complement,
-          neighborhood,
-          city,
-          state,
-          zip_code: zipCode,
-        },
-        payment_method: paymentMethod,
-      };
+    // Chave de Idempotência UUIDv4
+    const idempotencyKey = crypto.randomUUID();
 
+    try {
+      let response;
       if (directItem) {
-        payload.items = [
+        response = await checkoutApi.directCheckout(
           {
-            product_id: directItem.product.id || directItem.product.product_id,
+            product_id: directItem.product.product_id || Number(directItem.product.id),
             quantity: directItem.quantity,
+            shipping_address: address,
+            payment_method: paymentMethod,
           },
-        ];
+          idempotencyKey
+        );
+        sessionStorage.removeItem('direct_checkout_item');
       } else {
-        payload.items = cartItems.map((item) => ({
-          product_id: item.product_id !== undefined ? item.product_id : item.id,
-          quantity: item.quantity,
-        }));
+        response = await checkoutApi.processCheckout(
+          {
+            items: effectiveItems.map((it) => ({
+              product_id: it.product_id,
+              quantity: it.quantity,
+            })),
+            shipping_address: address,
+            payment_method: paymentMethod,
+            customer: customer.name ? customer : undefined,
+          },
+          idempotencyKey
+        );
+        clearCart();
       }
 
-      const res = await apiClient.post('/checkout', payload, {
-        headers: {
-          'Idempotency-Key': idempotencyKey,
-        },
+      // Redireciona para página de sucesso com dados do Pix e pedido
+      navigate(`/pedido-confirmado/${response.order_id}`, {
+        state: { checkoutResponse: response },
       });
-
-      setCreatedOrder(res.data);
     } catch (err: any) {
-      setErrorMsg(
-        err.response?.data?.message || err.response?.data?.detail || 'Erro ao processar o checkout. Tente novamente.'
-      );
+      const msg = err.message || '';
+      if (msg.includes('esgotado') || msg.includes('409') || msg.includes('Conflict')) {
+        setErrorMessage(
+          'Este produto acabou de esgotar sob alta concorrência de estoque. Atualize sua sacola para continuar.'
+        );
+      } else {
+        setErrorMessage(msg || 'Ocorreu uma falha ao processar o pedido. Tente novamente.');
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  if (effectiveItems.length === 0) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center">
+        <h2 className="text-xl font-bold font-serif text-neutral-800">Sua sacola está vazia</h2>
+        <p className="text-xs text-neutral-500 mt-2">Adicione itens para prosseguir ao checkout.</p>
+        <Button variant="primary" className="mt-4" onClick={() => navigate('/')}>
+          Ir às Compras
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-warm-50 py-6 sm:py-10 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-5xl mx-auto">
-        {/* Navegação Voltar */}
+    <div className="min-h-screen bg-neutral-50 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-warm-700 hover:text-botanic-950 transition-colors mb-6 active:scale-95"
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-500 hover:text-brand-700 mb-6 transition-colors"
         >
-          <ArrowLeft className="h-4 w-4" /> Voltar à loja
+          <ArrowLeft className="w-4 h-4" />
+          <span>Voltar</span>
         </button>
 
-        {/* Título & Selos de Confiança */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 pb-4 border-b border-warm-200/90">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-warm-900 font-serif flex items-center gap-2.5">
-              <Lock className="h-6 w-6 text-emerald-700" /> Checkout Seguro
-            </h1>
-            <p className="text-xs text-warm-500 mt-1">Finalização rápida em 1 página com trava atômica de estoque.</p>
-          </div>
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-neutral-900 mb-6">
+          Finalização do Pedido
+        </h1>
 
-          <div className="flex items-center gap-2 text-xs text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200/80 font-semibold w-fit">
-            <ShieldCheck className="h-4 w-4 text-emerald-700" />
-            Blindagem Criptográfica SSL 256-bit
-          </div>
-        </div>
-
-        {errorMsg && (
-          <div className="mb-6 rounded-2xl bg-terracotta-50 p-4 text-xs sm:text-sm text-terracotta-700 font-medium border border-terracotta-200">
-            {errorMsg}
+        {errorMessage && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-3 text-red-800 text-xs">
+            <AlertCircle className="w-5 h-5 shrink-0 text-red-600" />
+            <div>
+              <strong className="font-bold block">Atenção no Checkout</strong>
+              <span>{errorMessage}</span>
+            </div>
           </div>
         )}
 
-        {/* Exibição do Pix gerado */}
-        {createdOrder && createdOrder.pix_details ? (
-          <div className="max-w-md mx-auto space-y-6">
-            <div className="rounded-3xl bg-emerald-50 border border-emerald-200 p-5 text-center shadow-soft">
-              <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
-              <h2 className="text-base font-bold text-emerald-900 font-serif">
-                Pedido #{createdOrder.order_number || createdOrder.order_id} Criado!
-              </h2>
-              <p className="text-xs text-emerald-700 mt-1 font-medium">
-                Pague com o Pix abaixo. Confirmaremos seu pagamento instantaneamente nesta tela.
-              </p>
-            </div>
-
-            <PixPaymentBox
-              qrCodeBase64={createdOrder.pix_details.qr_code_url || createdOrder.pix_details.qr_code}
-              copyPasteCode={createdOrder.pix_details.qr_code || '000201...'}
-              expiresAt={createdOrder.pix_details.expires_at}
-            />
-
-            <Button
-              variant="outline"
-              onClick={() => navigate(`/pedido-confirmado/${createdOrder.order_id}`)}
-              className="w-full text-xs font-semibold text-warm-700 border-warm-300"
-            >
-              Já realizei o pagamento / Ver detalhes
-            </Button>
-          </div>
-        ) : (
-          <form onSubmit={handleCheckout} className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              {/* 1. Dados Pessoais */}
-              <div className="rounded-3xl bg-white p-5 sm:p-7 shadow-soft border border-warm-200/90 space-y-4">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-botanic-900 pb-2 border-b border-warm-100 flex items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-botanic-900 text-champagne-300 text-xs">1</span>
-                  Dados de Contato & Identificação
+        <form onSubmit={handleSubmitCheckout} className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Formulários (8 Colunas) */}
+          <div className="lg:col-span-8 space-y-6">
+            {/* 1. Identificação do Cliente */}
+            <div className="bg-white rounded-xl border border-neutral-200/90 p-5 sm:p-6 shadow-xs">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-800 text-xs font-bold flex items-center justify-center">
+                  1
+                </span>
+                <h2 className="text-base font-bold font-serif text-neutral-900">
+                  Identificação da Cliente
                 </h2>
-                <div className="space-y-3.5">
-                  <Input
-                    label="Nome Completo"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Nome como consta no documento"
-                  />
-                  <Input
-                    label="E-mail para confirmação"
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="seu.email@exemplo.com"
-                  />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    <Input
-                      label="CPF"
-                      required
-                      value={cpf}
-                      onChange={(e) => setCpf(e.target.value)}
-                      placeholder="000.000.000-00"
-                    />
-                    <Input
-                      label="WhatsApp / Telefone"
-                      required
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="(11) 99999-9999"
-                    />
-                  </div>
-
-                  {!user && (
-                    <div className="rounded-2xl bg-warm-50 p-3.5 border border-warm-200 mt-2">
-                      <label className="flex items-start gap-2.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={lgpdConsent}
-                          onChange={(e) => setLgpdConsent(e.target.checked)}
-                          className="mt-0.5 h-4 w-4 rounded border-warm-300 text-botanic-900 focus:ring-botanic-700"
-                        />
-                        <span className="text-xs text-warm-700 leading-snug">
-                          Concordo com o tratamento dos meus dados pessoais para emissão de nota fiscal e entrega do pedido conforme as diretrizes da <strong>LGPD</strong>.
-                        </span>
-                      </label>
-                    </div>
-                  )}
-                </div>
               </div>
 
-              {/* 2. Endereço de Entrega */}
-              <div className="rounded-3xl bg-white p-5 sm:p-7 shadow-soft border border-warm-200/90 space-y-4">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-botanic-900 pb-2 border-b border-warm-100 flex items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-botanic-900 text-champagne-300 text-xs">2</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input
+                  label="Nome Completo"
+                  required
+                  value={customer.name}
+                  onChange={(e) => setCustomer({ ...customer, name: e.target.value })}
+                  placeholder="Ana Paula Silva"
+                  leftIcon={<User className="w-4 h-4" />}
+                />
+                <Input
+                  label="E-mail"
+                  type="email"
+                  required
+                  value={customer.email}
+                  onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
+                  placeholder="ana.silva@exemplo.com.br"
+                />
+                <Input
+                  label="WhatsApp / Telefone"
+                  required
+                  value={customer.phone}
+                  onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+                  placeholder="(11) 98765-4321"
+                  containerClassName="sm:col-span-2"
+                />
+              </div>
+            </div>
+
+            {/* 2. Endereço de Entrega */}
+            <div className="bg-white rounded-xl border border-neutral-200/90 p-5 sm:p-6 shadow-xs">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-800 text-xs font-bold flex items-center justify-center">
+                  2
+                </span>
+                <h2 className="text-base font-bold font-serif text-neutral-900">
                   Endereço de Entrega
                 </h2>
-                <div className="space-y-3.5">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                    <div className="sm:col-span-1">
-                      <Input
-                        label="CEP"
-                        required
-                        value={zipCode}
-                        onChange={(e) => setZipCode(e.target.value)}
-                        placeholder="00000-000"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <Input
-                        label="Rua / Avenida"
-                        required
-                        value={street}
-                        onChange={(e) => setStreet(e.target.value)}
-                        placeholder="Avenida Paulista, Rua..."
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                    <div>
-                      <Input
-                        label="Número"
-                        required
-                        value={number}
-                        onChange={(e) => setNumber(e.target.value)}
-                        placeholder="123"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <Input
-                        label="Complemento"
-                        value={complement}
-                        onChange={(e) => setComplement(e.target.value)}
-                        placeholder="Apto 42, Bloco B (Opcional)"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                    <div>
-                      <Input
-                        label="Bairro"
-                        required
-                        value={neighborhood}
-                        onChange={(e) => setNeighborhood(e.target.value)}
-                        placeholder="Bairro"
-                      />
-                    </div>
-                    <div>
-                      <Input
-                        label="Cidade"
-                        required
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        placeholder="Cidade"
-                      />
-                    </div>
-                    <div>
-                      <Input
-                        label="Estado"
-                        required
-                        value={state}
-                        onChange={(e) => setState(e.target.value)}
-                        placeholder="SP"
-                      />
-                    </div>
-                  </div>
-                </div>
               </div>
 
-              {/* 3. Forma de Pagamento */}
-              <div className="rounded-3xl bg-white p-5 sm:p-7 shadow-soft border border-warm-200/90 space-y-4">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-botanic-900 pb-2 border-b border-warm-100 flex items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-botanic-900 text-champagne-300 text-xs">3</span>
-                  Método de Pagamento
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('pix')}
-                    className={`flex flex-col items-start p-4 rounded-2xl border-2 transition-all duration-200 active:scale-98 text-left ${
-                      paymentMethod === 'pix'
-                        ? 'border-botanic-800 bg-botanic-50/60 shadow-soft'
-                        : 'border-warm-200 hover:border-warm-300 bg-warm-50/40 text-warm-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full mb-2">
-                      <QrCode className="h-6 w-6 text-botanic-800" />
-                      <span className="rounded-full bg-champagne-500 text-botanic-950 font-black text-[10px] px-2 py-0.5 uppercase tracking-wide">
-                        5% OFF
-                      </span>
-                    </div>
-                    <span className="text-sm font-bold text-warm-900 font-serif">Pix Instantâneo</span>
-                    <span className="text-[11px] text-emerald-800 font-semibold mt-0.5">
-                      Aprovação em segundos e reserva garantida
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('credit_card')}
-                    className={`flex flex-col items-start p-4 rounded-2xl border-2 transition-all duration-200 active:scale-98 text-left ${
-                      paymentMethod === 'credit_card'
-                        ? 'border-botanic-800 bg-botanic-50/60 shadow-soft'
-                        : 'border-warm-200 hover:border-warm-300 bg-warm-50/40 text-warm-700'
-                    }`}
-                  >
-                    <CreditCard className="h-6 w-6 mb-2 text-warm-600" />
-                    <span className="text-sm font-bold text-warm-900 font-serif">Cartão de Crédito</span>
-                    <span className="text-[11px] text-warm-500 font-medium mt-0.5">
-                      Parcele em até 3x sem juros
-                    </span>
-                  </button>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-1">
+                  <Input
+                    label="CEP"
+                    required
+                    value={address.zip_code}
+                    onChange={(e) => setAddress({ ...address, zip_code: e.target.value })}
+                    onBlur={handleCepBlur}
+                    placeholder="01310-100"
+                    helperText={isCepLoading ? 'Buscando logradouro...' : 'Preenchimento automático'}
+                  />
                 </div>
+                <div className="sm:col-span-2">
+                  <Input
+                    label="Logradouro / Rua / Avenida"
+                    required
+                    value={address.street}
+                    onChange={(e) => setAddress({ ...address, street: e.target.value })}
+                    placeholder="Avenida Paulista"
+                  />
+                </div>
+
+                <Input
+                  label="Número"
+                  required
+                  value={address.number}
+                  onChange={(e) => setAddress({ ...address, number: e.target.value })}
+                  placeholder="1000"
+                />
+                <Input
+                  label="Complemento"
+                  value={address.complement}
+                  onChange={(e) => setAddress({ ...address, complement: e.target.value })}
+                  placeholder="Apto 42B"
+                />
+                <Input
+                  label="Bairro"
+                  required
+                  value={address.neighborhood}
+                  onChange={(e) => setAddress({ ...address, neighborhood: e.target.value })}
+                  placeholder="Bela Vista"
+                />
+
+                <Input
+                  label="Cidade"
+                  required
+                  value={address.city}
+                  onChange={(e) => setAddress({ ...address, city: e.target.value })}
+                  placeholder="São Paulo"
+                  containerClassName="sm:col-span-2"
+                />
+                <Input
+                  label="UF (Estado)"
+                  required
+                  maxLength={2}
+                  value={address.state}
+                  onChange={(e) => setAddress({ ...address, state: e.target.value.toUpperCase() })}
+                  placeholder="SP"
+                />
               </div>
             </div>
 
-            {/* Resumo dos Produtos & Finalização */}
-            <div className="rounded-3xl bg-white p-5 sm:p-7 shadow-luxury border border-warm-200/90 h-fit space-y-4">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-botanic-900 pb-2 border-b border-warm-100 font-serif">
-                Resumo do Pedido
-              </h2>
+            {/* 3. Forma de Pagamento */}
+            <div className="bg-white rounded-xl border border-neutral-200/90 p-5 sm:p-6 shadow-xs">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-6 h-6 rounded-full bg-brand-100 text-brand-800 text-xs font-bold flex items-center justify-center">
+                  3
+                </span>
+                <h2 className="text-base font-bold font-serif text-neutral-900">
+                  Forma de Pagamento
+                </h2>
+              </div>
 
-              <div className="divide-y divide-warm-100 max-h-60 overflow-y-auto pr-1">
-                {itemsToBuy.map((it: any) => (
-                  <div key={it.id || it.product_id} className="py-2.5 flex justify-between text-xs">
-                    <span className="text-warm-700 font-medium truncate max-w-[170px]">
-                      {it.quantity}x {it.name}
-                    </span>
-                    <span className="text-warm-900 font-bold shrink-0 font-serif">
-                      {formatPrice(it.price * it.quantity)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Opção Pix */}
+                <label
+                  onClick={() => setPaymentMethod('pix')}
+                  className={`
+                    p-4 rounded-xl border-2 cursor-pointer flex items-start gap-3 transition-all
+                    ${
+                      paymentMethod === 'pix'
+                        ? 'border-brand-700 bg-brand-50/50 shadow-xs'
+                        : 'border-neutral-200 hover:border-neutral-300'
+                    }
+                  `}
+                >
+                  <input
+                    type="radio"
+                    name="payment"
+                    checked={paymentMethod === 'pix'}
+                    onChange={() => setPaymentMethod('pix')}
+                    className="mt-1 text-brand-700 focus:ring-brand-700"
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <QrCode className="w-4 h-4 text-emerald-600" />
+                      <strong className="text-xs font-bold text-neutral-900">Pix Instantâneo</strong>
+                    </div>
+                    <p className="text-[11px] text-neutral-500 mt-1">
+                      Aprovação em segundos. Trava atômica anti-overselling com 30 minutos de reserva.
+                    </p>
+                  </div>
+                </label>
+
+                {/* Opção Cartão */}
+                <label
+                  onClick={() => setPaymentMethod('credit_card')}
+                  className={`
+                    p-4 rounded-xl border-2 cursor-pointer flex items-start gap-3 transition-all
+                    ${
+                      paymentMethod === 'credit_card'
+                        ? 'border-brand-700 bg-brand-50/50 shadow-xs'
+                        : 'border-neutral-200 hover:border-neutral-300'
+                    }
+                  `}
+                >
+                  <input
+                    type="radio"
+                    name="payment"
+                    checked={paymentMethod === 'credit_card'}
+                    onChange={() => setPaymentMethod('credit_card')}
+                    className="mt-1 text-brand-700 focus:ring-brand-700"
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <CreditCard className="w-4 h-4 text-brand-700" />
+                      <strong className="text-xs font-bold text-neutral-900">Cartão de Crédito</strong>
+                    </div>
+                    <p className="text-[11px] text-neutral-500 mt-1">
+                      Processamento seguro via gateway parceiro com análise antifraude.
+                    </p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Resumo Lateral e Botão Finalizar (4 Colunas) */}
+          <div className="lg:col-span-4">
+            <div className="bg-white rounded-xl border border-neutral-200/90 shadow-xs p-6 sticky top-24">
+              <h3 className="text-base font-bold font-serif text-neutral-900 mb-4">
+                Itens do Pedido ({effectiveItems.length})
+              </h3>
+
+              <div className="divide-y divide-neutral-100 max-h-60 overflow-y-auto mb-4 pr-1">
+                {effectiveItems.map((it) => (
+                  <div key={it.product_id} className="py-2.5 flex items-center justify-between text-xs">
+                    <div className="truncate mr-2">
+                      <span className="font-semibold text-neutral-900 block truncate">{it.name}</span>
+                      <span className="text-neutral-500 text-[11px]">{it.quantity} un.</span>
+                    </div>
+                    <span className="font-bold text-neutral-900 font-mono">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                        it.price * it.quantity
+                      )}
                     </span>
                   </div>
                 ))}
               </div>
 
-              <div className="pt-3 border-t border-warm-100 space-y-2 text-xs text-warm-600">
+              <div className="border-t border-neutral-200 pt-3 space-y-2 text-xs text-neutral-600 mb-6">
                 <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span className="font-semibold text-warm-900">{formatPrice(checkoutTotal)}</span>
+                  <span>Subtotal</span>
+                  <span className="font-semibold text-neutral-800 font-mono">{formattedTotal}</span>
                 </div>
-                <div className="flex justify-between text-emerald-800 font-bold">
-                  <span>Frete Expresso:</span>
-                  <span>GRÁTIS</span>
+                <div className="flex justify-between text-emerald-700 font-semibold">
+                  <span>Frete</span>
+                  <span>Grátis</span>
                 </div>
-
-                {paymentMethod === 'pix' && (
-                  <div className="flex justify-between text-emerald-800 font-bold bg-emerald-50 p-2 rounded-xl">
-                    <span className="flex items-center gap-1">
-                      <Sparkles className="h-3 w-3 text-emerald-600" /> Desconto Pix (5%):
-                    </span>
-                    <span>- {formatPrice(checkoutTotal * 0.05)}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between text-base font-bold text-warm-900 pt-3 border-t border-warm-100 font-serif">
-                  <span>Total a Pagar:</span>
-                  <span className="text-lg text-botanic-900">
-                    {formatPrice(paymentMethod === 'pix' ? pixCheckoutTotal : checkoutTotal)}
-                  </span>
+                <div className="flex justify-between text-base font-bold text-neutral-900 border-t border-neutral-200 pt-3">
+                  <span>Total</span>
+                  <span className="text-brand-800 font-serif text-xl">{formattedTotal}</span>
                 </div>
               </div>
 
               <Button
                 type="submit"
+                variant="primary"
                 size="lg"
+                fullWidth
                 isLoading={isSubmitting}
-                className="w-full bg-gradient-to-r from-botanic-900 to-botanic-950 text-champagne-300 font-bold py-4 mt-4 shadow-luxury hover:from-botanic-950 hover:to-black active:scale-[0.98] rounded-2xl"
+                className="shadow-md"
               >
-                Gerar Pix e Concluir Pedido
+                Confirmar e Gerar Pagamento
               </Button>
 
-              <div className="flex items-center justify-center gap-1.5 text-[11px] text-warm-500 pt-2 text-center">
-                <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
-                <span>Compra garantida com antifraude e proteção LGPD</span>
+              <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-neutral-400">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>Idempotência garantida contra duplicidade</span>
               </div>
             </div>
-          </form>
-        )}
+          </div>
+        </form>
       </div>
     </div>
   );
 };
+
+export default CheckoutPage;

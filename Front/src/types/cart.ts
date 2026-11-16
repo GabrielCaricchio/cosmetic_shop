@@ -1,13 +1,28 @@
-import { Product } from './product';
-
 export interface CartItem {
-  product_id: string;
+  product_id: number;
+  id?: string | number;
+  name: string;
+  price: number;
+  promotional_price?: number | null;
   quantity: number;
-  product?: Product;
+  subtotal?: number;
+  image_url?: string;
+  stock_quantity?: number;
 }
 
-export interface CartSession {
+export interface Cart {
   items: CartItem[];
-  subtotal: number;
-  item_count: number;
+  total_amount: number;
+  total_items: number;
+}
+
+export interface AddCartItemPayload {
+  product_id?: number;
+  id?: string | number;
+  name?: string;
+  price?: number;
+  promotional_price?: number | null;
+  image_url?: string;
+  stock_quantity?: number;
+  quantity?: number;
 }

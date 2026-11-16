@@ -1,113 +1,105 @@
 import React, { useState } from 'react';
-import { Modal } from '../common/Modal';
-import { Input } from '../common/Input';
-import { Button } from '../common/Button';
 import { useAuth } from '../../context/AuthContext';
+import Modal from '../common/Modal';
+import Input from '../common/Input';
+import Button from '../common/Button';
+import { Mail, Lock, User, Phone, ShieldCheck } from 'lucide-react';
 
 export interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: () => void;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({
-  isOpen,
-  onClose,
-  onSuccess,
-}) => {
-  const { login, register, isLoading } = useAuth();
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
+  const { login, register } = useAuth();
   const [tab, setTab] = useState<'login' | 'register'>('login');
 
-  // Login form
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-
-  // Register form
+  // Form states
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [regEmail, setRegEmail] = useState('');
-  const [regPassword, setRegPassword] = useState('');
-  const [cpf, setCpf] = useState('');
   const [phone, setPhone] = useState('');
-  const [lgpdConsent, setLgpdConsent] = useState(false);
+  const [lgpdConsent, setLgpdConsent] = useState(true);
 
-  const [errorMsg, setErrorMsg] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
+    setError(null);
+    setIsLoading(true);
     try {
-      await login({ email: loginEmail, password: loginPassword });
+      await login({ email, password });
       onClose();
-      if (onSuccess) onSuccess();
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.message || err.response?.data?.detail || 'E-mail ou senha inválidos.');
+      setError(err.message || 'Falha ao realizar login. Verifique seus dados.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg('');
     if (!lgpdConsent) {
-      setErrorMsg('É necessário consentir com os termos da LGPD para se cadastrar.');
+      setError('É necessário aceitar os termos de consentimento LGPD para se cadastrar.');
       return;
     }
+
+    setError(null);
+    setIsLoading(true);
     try {
       await register({
         name,
-        email: regEmail,
-        password: regPassword,
-        cpf,
+        email,
+        password,
         phone,
         lgpd_consent: lgpdConsent,
       });
       onClose();
-      if (onSuccess) onSuccess();
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.message || err.response?.data?.detail || 'Erro ao criar conta. Verifique os dados.');
+      setError(err.message || 'Falha no cadastro. Tente novamente.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={tab === 'login' ? 'Identificação do Cliente' : 'Cadastre-se na Aura'}
-      maxWidth="md"
-    >
-      <div className="flex border-b border-warm-200 mb-6">
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="md">
+      {/* Abas Alternáveis */}
+      <div className="flex border-b border-neutral-200 -mt-2 mb-6">
         <button
           type="button"
           onClick={() => {
             setTab('login');
-            setErrorMsg('');
+            setError(null);
           }}
-          className={`flex-1 pb-3 text-center text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
+          className={`flex-1 pb-3 text-sm font-semibold text-center border-b-2 transition-all ${
             tab === 'login'
-              ? 'border-botanic-800 text-botanic-950'
-              : 'border-transparent text-warm-400 hover:text-warm-700'
+              ? 'border-brand-700 text-brand-800'
+              : 'border-transparent text-neutral-400 hover:text-neutral-700'
           }`}
         >
-          Já sou cliente
+          Entrar na Conta
         </button>
         <button
           type="button"
           onClick={() => {
             setTab('register');
-            setErrorMsg('');
+            setError(null);
           }}
-          className={`flex-1 pb-3 text-center text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
+          className={`flex-1 pb-3 text-sm font-semibold text-center border-b-2 transition-all ${
             tab === 'register'
-              ? 'border-botanic-800 text-botanic-950'
-              : 'border-transparent text-warm-400 hover:text-warm-700'
+              ? 'border-brand-700 text-brand-800'
+              : 'border-transparent text-neutral-400 hover:text-neutral-700'
           }`}
         >
-          Primeira compra
+          Criar Nova Conta
         </button>
       </div>
 
-      {errorMsg && (
-        <div className="mb-4 rounded-2xl bg-terracotta-50 p-3.5 text-xs text-terracotta-700 font-medium border border-terracotta-200">
-          {errorMsg}
+      {error && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-xs text-red-700">
+          {error}
         </div>
       )}
 
@@ -117,91 +109,106 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             label="E-mail"
             type="email"
             required
-            value={loginEmail}
-            onChange={(e) => setLoginEmail(e.target.value)}
-            placeholder="seu.email@exemplo.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="seu.email@exemplo.com.br"
+            leftIcon={<Mail className="w-4 h-4" />}
           />
           <Input
-            label="Senha de Acesso"
+            label="Senha"
             type="password"
             required
-            value={loginPassword}
-            onChange={(e) => setLoginPassword(e.target.value)}
-            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Sua senha secreta"
+            leftIcon={<Lock className="w-4 h-4" />}
           />
 
-          <Button
-            type="submit"
-            isLoading={isLoading}
-            className="w-full bg-gradient-to-r from-botanic-900 to-botanic-950 text-champagne-300 font-bold py-3.5 mt-2 rounded-2xl shadow-soft"
-          >
-            Acessar Minha Conta
+          <Button type="submit" variant="primary" size="lg" fullWidth isLoading={isLoading}>
+            Entrar
           </Button>
+
+          <p className="text-center text-xs text-neutral-500 pt-2">
+            Ainda não tem conta?{' '}
+            <button
+              type="button"
+              onClick={() => setTab('register')}
+              className="text-brand-700 font-semibold hover:underline"
+            >
+              Cadastre-se rapidamente
+            </button>
+          </p>
         </form>
       ) : (
         <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
           <Input
             label="Nome Completo"
+            type="text"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Ex: Camila Albuquerque"
+            placeholder="Maria Silva"
+            leftIcon={<User className="w-4 h-4" />}
           />
           <Input
             label="E-mail"
             type="email"
             required
-            value={regEmail}
-            onChange={(e) => setRegEmail(e.target.value)}
-            placeholder="seu.email@exemplo.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="maria.silva@exemplo.com.br"
+            leftIcon={<Mail className="w-4 h-4" />}
           />
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="CPF"
-              value={cpf}
-              onChange={(e) => setCpf(e.target.value)}
-              placeholder="000.000.000-00"
-            />
-            <Input
-              label="WhatsApp"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="(11) 99999-9999"
-            />
-          </div>
           <Input
-            label="Criar Senha"
+            label="WhatsApp / Telefone"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="(11) 98765-4321"
+            leftIcon={<Phone className="w-4 h-4" />}
+          />
+          <Input
+            label="Senha (mínimo 6 caracteres)"
             type="password"
             required
-            value={regPassword}
-            onChange={(e) => setRegPassword(e.target.value)}
-            placeholder="Mínimo 8 caracteres"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Crie uma senha forte"
+            leftIcon={<Lock className="w-4 h-4" />}
           />
 
-          <div className="rounded-2xl bg-warm-50 p-3 border border-warm-200">
+          {/* Consentimento LGPD */}
+          <div className="pt-2">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
-                required
                 checked={lgpdConsent}
                 onChange={(e) => setLgpdConsent(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-warm-300 text-botanic-900 focus:ring-botanic-700"
+                className="mt-0.5 rounded border-neutral-300 text-brand-700 focus:ring-brand-700"
               />
-              <span className="text-[11px] text-warm-700 leading-snug">
-                Concordo com os Termos e com o tratamento dos meus dados para compra de acordo com a LGPD.
+              <span className="text-xs text-neutral-600 leading-tight">
+                Concordo com os{' '}
+                <a href="/termos" target="_blank" className="text-brand-700 underline font-medium">
+                  Termos de Uso
+                </a>{' '}
+                e com o tratamento dos meus dados para fins de compra e entrega conforme a{' '}
+                <strong>LGPD</strong>.
               </span>
             </label>
           </div>
 
-          <Button
-            type="submit"
-            isLoading={isLoading}
-            className="w-full bg-gradient-to-r from-botanic-900 to-botanic-950 text-champagne-300 font-bold py-3.5 mt-2 rounded-2xl shadow-soft"
-          >
-            Concluir Cadastro & Acessar
+          <Button type="submit" variant="primary" size="lg" fullWidth isLoading={isLoading} className="mt-4">
+            Concluir Cadastro
           </Button>
+
+          <div className="flex items-center justify-center gap-1.5 text-[11px] text-neutral-400 pt-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Seus dados são protegidos com criptografia Argon2id</span>
+          </div>
         </form>
       )}
     </Modal>
   );
 };
+
+export default AuthModal;

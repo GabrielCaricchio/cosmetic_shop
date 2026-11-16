@@ -1,40 +1,40 @@
-import React from 'react';
+import React, { ReactNode } from 'react';
 
 export interface BadgeProps {
-  children: React.ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'botanic' | 'gold' | 'terracotta' | 'vegan';
+  children: ReactNode;
+  variant?: 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'brand' | 'champagne';
   size?: 'sm' | 'md';
   className?: string;
 }
 
 export const Badge: React.FC<BadgeProps> = ({
   children,
-  variant = 'default',
+  variant = 'neutral',
   size = 'md',
   className = '',
 }) => {
-  const variantStyles = {
-    default: 'bg-warm-100 text-warm-800 border-warm-200/80',
-    botanic: 'bg-botanic-50 text-botanic-800 border-botanic-200 font-semibold',
-    gold: 'bg-champagne-100 text-champagne-800 border-champagne-300 font-semibold',
-    vegan: 'bg-emerald-50 text-emerald-800 border-emerald-200/80 font-medium',
-    success: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-    warning: 'bg-amber-50 text-amber-800 border-amber-200',
-    danger: 'bg-terracotta-50 text-terracotta-700 border-terracotta-200',
-    terracotta: 'bg-terracotta-50 text-terracotta-700 border-terracotta-200',
-    info: 'bg-sky-50 text-sky-800 border-sky-200',
+  const sizeStyles = {
+    sm: 'text-[10px] px-2 py-0.5 font-medium leading-tight',
+    md: 'text-xs px-2.5 py-1 font-semibold leading-normal',
   };
 
-  const sizeStyles = {
-    sm: 'text-[11px] px-2 py-0.5 tracking-wide uppercase',
-    md: 'text-xs px-2.5 py-1 font-medium tracking-tight',
+  const variantStyles = {
+    neutral: 'bg-neutral-100 text-neutral-800 border border-neutral-200',
+    success: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
+    warning: 'bg-amber-50 text-amber-800 border border-amber-200',
+    danger: 'bg-rose-50 text-rose-800 border border-rose-200',
+    info: 'bg-sky-50 text-sky-800 border border-sky-200',
+    brand: 'bg-brand-100 text-brand-900 border border-brand-200',
+    champagne: 'bg-amber-100/60 text-amber-900 border border-amber-300/50',
   };
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full border shadow-2xs backdrop-blur-xs transition-colors ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      className={`inline-flex items-center rounded-pill tracking-wide uppercase ${sizeStyles[size]} ${variantStyles[variant]} ${className}`}
     >
       {children}
     </span>
   );
 };
+
+export default Badge;

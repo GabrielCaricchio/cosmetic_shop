@@ -1,141 +1,141 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ClientUser, AdminUser, LoginPayload, ClientRegisterPayload } from '../types/auth';
-import { apiClient } from '../services/apiClient';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { authApi } from '../services/authApi';
+import { AUTH_TOKEN_KEY, ADMIN_TOKEN_KEY } from '../services/apiClient';
+import {
+  ClientUser,
+  AdminUser,
+  LoginCredentials,
+  RegisterData,
+  AdminLoginCredentials,
+} from '../types/auth';
 
-export interface AuthContextType {
+interface AuthContextType {
   user: ClientUser | null;
   adminUser: AdminUser | null;
-  token: string | null;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
   isLoading: boolean;
   isAuthModalOpen: boolean;
   openAuthModal: () => void;
   closeAuthModal: () => void;
-  login: (payload: LoginPayload) => Promise<void>;
-  register: (payload: ClientRegisterPayload) => Promise<void>;
-  adminLogin: (payload: LoginPayload) => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   logout: () => void;
+  adminLogin: (credentials: AdminLoginCredentials) => Promise<void>;
+  adminLogout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<ClientUser | null>(() => {
-    const stored = localStorage.getItem('user');
-    return stored ? JSON.parse(stored) : null;
-  });
-  const [adminUser, setAdminUser] = useState<AdminUser | null>(() => {
-    const stored = localStorage.getItem('admin_user');
-    return stored ? JSON.parse(stored) : null;
-  });
-  const [token, setToken] = useState<string | null>(() => {
-    return localStorage.getItem('token') || localStorage.getItem('admin_token');
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<ClientUser | null>(null);
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
+  // Inicialização: restaura sessões persistidas
   useEffect(() => {
-    if (token && !user) {
-      apiClient
-        .get('/me')
-        .then((res) => {
-          setUser(res.data);
-          localStorage.setItem('user', JSON.stringify(res.data));
-        })
-        .catch(() => {
-          logout();
-        });
-    }
-  }, [token]);
+    const initAuth = async () => {
+      const clientToken = localStorage.getItem(AUTH_TOKEN_KEY);
+      const adminToken = localStorage.getItem(ADMIN_TOKEN_KEY);
 
-  const login = async (payload: LoginPayload) => {
-    setIsLoading(true);
-    try {
-      const res = await apiClient.post('/login', payload);
-      const { access_token, user: userData } = res.data;
-      const parsedUser = userData || {
-        id: res.data.user_id,
-        user_id: res.data.user_id,
-        name: res.data.name,
-        role: res.data.role,
-      };
-      setToken(access_token);
-      setUser(parsedUser);
-      localStorage.setItem('token', access_token);
-      localStorage.setItem('user', JSON.stringify(parsedUser));
-      setIsAuthModalOpen(false);
-    } finally {
+      if (adminToken) {
+        // Tenta decodificar ou ler adminUser salvo no localStorage
+        const savedAdmin = localStorage.getItem('aura_admin_user');
+        if (savedAdmin) {
+          try {
+            setAdminUser(JSON.parse(savedAdmin));
+          } catch {
+            setAdminUser({ id: 1, name: 'Administrador', email: 'admin@auracosmeticos.com.br', role: 'Admin' });
+          }
+        } else {
+          setAdminUser({ id: 1, name: 'Administrador', email: 'admin@auracosmeticos.com.br', role: 'Admin' });
+        }
+      }
+
+      if (clientToken) {
+        try {
+          const profile = await authApi.getMe();
+          setUser(profile);
+        } catch {
+          // Token expirado ou inválido
+          localStorage.removeItem(AUTH_TOKEN_KEY);
+          setUser(null);
+        }
+      }
       setIsLoading(false);
-    }
+    };
+
+    initAuth();
+  }, []);
+
+  const login = async (credentials: LoginCredentials) => {
+    const response = await authApi.login(credentials);
+    const profile = await authApi.getMe().catch(() => ({
+      id: response.user_id,
+      name: response.name,
+      email: credentials.email,
+      role: response.role,
+    }));
+    setUser(profile);
+    setIsAuthModalOpen(false);
   };
 
-  const register = async (payload: ClientRegisterPayload) => {
-    if (!payload.lgpd_consent) {
-      throw new Error('É necessário aceitar os termos da LGPD para criar uma conta.');
-    }
-    setIsLoading(true);
-    try {
-      const res = await apiClient.post('/register', payload);
-      const { access_token, user: userData } = res.data;
-      const parsedUser = userData || {
-        id: res.data.user_id,
-        user_id: res.data.user_id,
-        name: res.data.name,
-        role: res.data.role,
-      };
-      setToken(access_token);
-      setUser(parsedUser);
-      localStorage.setItem('token', access_token);
-      localStorage.setItem('user', JSON.stringify(parsedUser));
-      setIsAuthModalOpen(false);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const adminLogin = async (payload: LoginPayload) => {
-    setIsLoading(true);
-    try {
-      const res = await apiClient.post('/admin/login', payload);
-      const { access_token, user: adminData } = res.data;
-      const parsedAdmin = adminData || {
-        id: res.data.user_id,
-        user_id: res.data.user_id,
-        name: res.data.name,
-        role: res.data.role,
-      };
-      setToken(access_token);
-      setAdminUser(parsedAdmin);
-      localStorage.setItem('admin_token', access_token);
-      localStorage.setItem('admin_user', JSON.stringify(parsedAdmin));
-    } finally {
-      setIsLoading(false);
-    }
+  const register = async (data: RegisterData) => {
+    const response = await authApi.register(data);
+    const profile: ClientUser = {
+      id: response.user_id,
+      name: response.name || data.name,
+      email: data.email,
+      phone: data.phone,
+      role: response.role,
+    };
+    setUser(profile);
+    setIsAuthModalOpen(false);
   };
 
   const logout = () => {
+    authApi.logout();
     setUser(null);
-    setAdminUser(null);
-    setToken(null);
-    localStorage.removeItem('token');
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('user');
-    localStorage.removeItem('admin_user');
   };
+
+  const adminLogin = async (credentials: AdminLoginCredentials) => {
+    const response = await authApi.adminLogin(credentials);
+    const admin: AdminUser = {
+      id: response.user_id,
+      name: response.name,
+      email: credentials.email,
+      role: response.role,
+    };
+    setAdminUser(admin);
+    localStorage.setItem('aura_admin_user', JSON.stringify(admin));
+  };
+
+  const adminLogout = () => {
+    authApi.adminLogout();
+    localStorage.removeItem('aura_admin_user');
+    setAdminUser(null);
+  };
+
+  const openAuthModal = () => setIsAuthModalOpen(true);
+  const closeAuthModal = () => setIsAuthModalOpen(false);
 
   return (
     <AuthContext.Provider
       value={{
         user,
         adminUser,
-        token,
+        isAuthenticated: !!user,
+        isAdmin: !!adminUser,
         isLoading,
         isAuthModalOpen,
-        openAuthModal: () => setIsAuthModalOpen(true),
-        closeAuthModal: () => setIsAuthModalOpen(false),
+        openAuthModal,
+        closeAuthModal,
         login,
         register,
-        adminLogin,
         logout,
+        adminLogin,
+        adminLogout,
       }}
     >
       {children}
@@ -143,10 +143,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
-export const useAuth = (): AuthContextType => {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth deve ser usado dentro de um AuthProvider');
+    throw new Error('useAuth deve ser utilizado dentro de um AuthProvider');
   }
   return context;
 };
+
+export default AuthContext;

@@ -1,46 +1,42 @@
-import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import React, { ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import Spinner from '../common/Spinner';
 
 export interface AdminRouteGuardProps {
-  children: React.ReactNode;
-  allowedRoles?: string[];
+  children: ReactNode;
 }
 
-export const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({
-  children,
-  allowedRoles,
-}) => {
-  const location = useLocation();
+export const AdminRouteGuard: React.FC<AdminRouteGuardProps> = ({ children }) => {
+  let isAdmin = false;
+  let isLoading = false;
 
-  const adminToken = localStorage.getItem('admin_token');
-  const adminUserStr = localStorage.getItem('admin_user');
-  let adminUser: { role?: string } | null = null;
-  if (adminUserStr) {
-    try {
-      adminUser = JSON.parse(adminUserStr);
-    } catch {
-      adminUser = null;
+  try {
+    const auth = useAuth();
+    isAdmin = auth.isAdmin;
+    isLoading = auth.isLoading;
+  } catch {
+    // Caso o componente seja testado ou renderizado fora de um AuthProvider explícito
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('aura_admin_token');
+      isAdmin = !!token;
     }
+    isLoading = false;
   }
 
-  const isAuthenticated = Boolean(adminToken && adminUser);
-
-  if (!isAuthenticated) {
-    return <Navigate to="/admin/login" state={{ from: location }} replace />;
-  }
-
-  if (allowedRoles && adminUser?.role && !allowedRoles.includes(adminUser.role)) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-100 p-6">
-        <div className="bg-white p-6 rounded-2xl shadow-md max-w-md text-center">
-          <h2 className="text-lg font-bold text-red-600">Acesso Restrito</h2>
-          <p className="text-sm text-neutral-600 mt-2">
-            Seu perfil ({adminUser.role}) não tem permissão para acessar esta seção.
-          </p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-neutral-100">
+        <Spinner size="lg" className="text-brand-700" />
       </div>
     );
   }
 
+  if (!isAdmin) {
+    return <Navigate to="/admin/login" replace />;
+  }
+
   return <>{children}</>;
 };
+
+export default AdminRouteGuard;

@@ -1,131 +1,136 @@
 import React, { useState } from 'react';
-import { Copy, Check, Clock, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Copy, Check, Clock, QrCode } from 'lucide-react';
 import { useCountdown } from '../../hooks/useCountdown';
-import { Button } from '../common/Button';
 
 export interface PixPaymentBoxProps {
   qrCodeBase64?: string;
-  copyPasteCode: string;
-  expiresAt?: string;
-  onExpired?: () => void;
+  copyPasteCode?: string;
+  expiresAt: string | Date | number;
+  totalAmount?: number;
 }
 
 export const PixPaymentBox: React.FC<PixPaymentBoxProps> = ({
   qrCodeBase64,
-  copyPasteCode,
+  copyPasteCode = '',
   expiresAt,
-  onExpired,
+  totalAmount,
 }) => {
   const [copied, setCopied] = useState(false);
-
-  // Padrão de 1800s (30 minutos) de reserva no Redis
-  const calculateInitialSeconds = () => {
-    if (!expiresAt) return 1800;
-    const diffMs = new Date(expiresAt).getTime() - Date.now();
-    return Math.max(0, Math.floor(diffMs / 1000));
-  };
-
-  const { formatted, isExpired } = useCountdown(calculateInitialSeconds());
-
-  React.useEffect(() => {
-    if (isExpired && onExpired) {
-      onExpired();
-    }
-  }, [isExpired, onExpired]);
+  const { formatted, isExpired } = useCountdown(expiresAt);
 
   const handleCopy = async () => {
+    if (!copyPasteCode) return;
     try {
-      if (navigator.clipboard) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(copyPasteCode);
       }
       setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
-    } catch (err) {
-      console.warn('Erro ao copiar para clipboard:', err);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Fallback de cópia manual
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     }
   };
 
+  const formattedAmount = totalAmount
+    ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAmount)
+    : null;
+
   return (
-    <div className="rounded-3xl border border-warm-200/90 bg-white p-5 sm:p-7 shadow-luxury text-center space-y-5">
-      {/* Timer de Reserva Atômica Redis */}
-      <div className="inline-flex items-center gap-2 rounded-full bg-champagne-100/90 px-4 py-1.5 text-xs font-bold text-champagne-800 border border-champagne-300">
-        <Clock className="h-4 w-4 text-champagne-600 animate-spin" />
+    <div className="bg-white rounded-xl border border-neutral-200/90 shadow-sm p-6 max-w-lg mx-auto text-center">
+      {/* Cabeçalho Pix */}
+      <div className="flex items-center justify-center gap-2 mb-2">
+        <span className="p-2 rounded-full bg-emerald-50 text-emerald-700">
+          <QrCode className="w-6 h-6" />
+        </span>
+        <h2 className="text-xl font-bold text-neutral-900 font-serif">Pagamento instantâneo via Pix</h2>
+      </div>
+
+      {formattedAmount && (
+        <p className="text-2xl font-extrabold text-brand-700 mb-4">{formattedAmount}</p>
+      )}
+
+      {/* Temporizador Regressivo de Reserva Anti-Overselling */}
+      <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-pill bg-amber-50 text-amber-800 border border-amber-200 text-xs font-semibold mb-6">
+        <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
         {isExpired ? (
-          <span className="text-terracotta-600 font-extrabold">Tempo limite expirado!</span>
+          <span className="text-red-700 font-bold">Prazo expirado. Estoque liberado.</span>
         ) : (
-          <span>Reserva de estoque garantida: {formatted}</span>
+          <span>Pague em até <strong className="font-mono text-sm">{formatted}</strong> para garantir seus cosméticos</span>
         )}
       </div>
 
-      {/* QR Code Container */}
-      <div className="mx-auto w-52 h-52 sm:w-60 sm:h-60 rounded-3xl bg-warm-50 border border-warm-200 flex items-center justify-center p-3 shadow-inner">
-        {qrCodeBase64 ? (
-          <img
-            src={qrCodeBase64}
-            alt="Pix QR Code"
-            className="w-full h-full object-contain rounded-2xl"
-          />
-        ) : (
-          <div className="text-xs text-warm-400 font-mono break-all p-3">
-            [QR Code Pix Gerado com Segurança]
-          </div>
-        )}
-      </div>
-
-      {/* Instruções de Pagamento */}
-      <div className="text-left space-y-2.5 bg-warm-50 p-4 rounded-2xl border border-warm-200/80">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-warm-900">
-          <ShieldCheck className="h-4 w-4 text-emerald-700" />
-          Como pagar com Pix:
+      {/* Imagem do QR Code Pix */}
+      <div className="flex flex-col items-center justify-center mb-6">
+        <div className="p-3 bg-white border-2 border-neutral-200 rounded-lg shadow-sm">
+          {qrCodeBase64 ? (
+            <img
+              src={qrCodeBase64}
+              alt="QR Code Pix"
+              className="w-48 h-48 md:w-56 md:h-56 object-contain"
+            />
+          ) : (
+            <div className="w-48 h-48 flex items-center justify-center bg-neutral-100 text-neutral-400 text-xs">
+              QR Code indisponível
+            </div>
+          )}
         </div>
-        <ol className="text-xs text-warm-700 space-y-1 list-decimal list-inside leading-relaxed font-normal">
-          <li>Abra o aplicativo do seu banco preferido</li>
-          <li>Acesse a área <strong>Pix &gt; Ler QR Code</strong> ou <strong>Copia e Cola</strong></li>
-          <li>Confirme os dados para <strong>aprovação instantânea</strong></li>
-        </ol>
+        <span className="text-xs text-neutral-500 mt-2">
+          Abra o aplicativo do seu banco e aponte a câmera para o QR Code
+        </span>
       </div>
 
       {/* Pix Copia e Cola */}
-      <div className="space-y-2 text-left">
-        <label className="block text-xs font-bold uppercase tracking-wider text-warm-700">
-          Código Pix Copia e Cola:
+      <div className="text-left bg-neutral-50 rounded-lg p-3.5 border border-neutral-200 mb-5">
+        <label className="block text-xs font-semibold text-neutral-700 mb-1.5 uppercase tracking-wider">
+          Código Pix Copia e Cola
         </label>
-        <div className="relative">
+        <div className="flex items-center gap-2">
           <input
             type="text"
             readOnly
             value={copyPasteCode}
-            className="w-full rounded-2xl border border-warm-200 bg-warm-100/70 px-4 py-3 text-xs font-mono text-warm-800 focus:outline-none select-all"
+            className="w-full bg-white border border-neutral-300 rounded-md px-3 py-2 text-xs font-mono text-neutral-600 truncate focus:outline-none"
           />
         </div>
-
-        <Button
-          type="button"
-          onClick={handleCopy}
-          disabled={isExpired}
-          className={`w-full py-3.5 font-bold flex items-center justify-center gap-2 rounded-2xl transition-all shadow-md active:scale-[0.98] ${
-            copied
-              ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
-              : 'bg-gradient-to-r from-botanic-900 to-botanic-950 hover:from-botanic-950 hover:to-black text-champagne-300'
-          }`}
-        >
-          {copied ? (
-            <>
-              <Check className="h-4 w-4" /> Código Pix Copiado!
-            </>
-          ) : (
-            <>
-              <Copy className="h-4 w-4" /> Copiar Chave Pix
-            </>
-          )}
-        </Button>
       </div>
 
-      {isExpired && (
-        <div className="mt-3 flex items-center justify-center gap-2 text-xs text-terracotta-600 font-medium">
-          <AlertCircle className="h-4 w-4" /> A reserva de estoque expirou. Por favor, reinicie a compra.
-        </div>
-      )}
+      {/* Botão de Cópia */}
+      <button
+        type="button"
+        onClick={handleCopy}
+        disabled={isExpired || !copyPasteCode}
+        className={`
+          w-full h-12 rounded-md font-semibold text-sm flex items-center justify-center gap-2 transition-all shadow-sm
+          ${
+            copied
+              ? 'bg-emerald-600 text-white'
+              : 'bg-brand-700 hover:bg-brand-800 text-white active:scale-[0.98]'
+          }
+          disabled:bg-neutral-300 disabled:text-neutral-500 disabled:cursor-not-allowed
+        `}
+      >
+        {copied ? (
+          <>
+            <Check className="w-4 h-4" />
+            <span>Chave copiada com sucesso!</span>
+          </>
+        ) : (
+          <>
+            <Copy className="w-4 h-4" />
+            <span>Copiar Chave Pix</span>
+          </>
+        )}
+      </button>
+
+      {/* Instrução de Polling / Espera Passiva */}
+      <div className="mt-5 pt-4 border-t border-neutral-100 flex items-center justify-center gap-2 text-xs text-neutral-500">
+        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+        <span>Aguardando confirmação do banco... A tela atualizará automaticamente.</span>
+      </div>
     </div>
   );
 };
+
+export default PixPaymentBox;

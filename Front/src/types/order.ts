@@ -1,36 +1,42 @@
-import { Product } from './product';
-import { PaymentMethod } from './checkout';
-
 export type OrderStatus =
   | 'pending'
   | 'processing'
   | 'under_review'
   | 'approved'
+  | 'paid'
+  | 'preparing'
+  | 'shipped'
+  | 'delivered'
   | 'rejected'
   | 'cancelled'
   | 'refunded';
 
 export interface OrderItemDetail {
-  id: string;
-  product_id: string;
+  product_id: number;
+  product_name: string;
   quantity: number;
   unit_price: number;
-  total_price: number;
-  product?: Product;
+  subtotal: number;
 }
 
-export interface OrderDetail {
-  id: string;
-  client_id: string;
-  order_number: string;
-  status: OrderStatus;
-  subtotal: number;
-  shipping_fee: number;
-  discount: number;
+export interface Order {
+  order_id: string;
+  client_id?: number;
   total_amount: number;
-  payment_method: PaymentMethod;
-  shipping_address: Record<string, any>;
+  status: OrderStatus;
+  shipping_address: {
+    street: string;
+    number: string;
+    complement?: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+    zip_code: string;
+  };
   items: OrderItemDetail[];
+  payment_method?: string;
+  pix_qr_code_base64?: string;
+  pix_copy_paste?: string;
   created_at: string;
   updated_at: string;
 }

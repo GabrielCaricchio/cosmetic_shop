@@ -1,37 +1,45 @@
 export interface ClientUser {
-  id: string;
+  id: number;
   name: string;
   email: string;
-  phone?: string | null;
-  cpf?: string | null;
-  lgpd_consent: boolean;
-  created_at: string;
+  phone?: string;
+  role: 'client' | 'admin' | 'superadmin' | string;
 }
 
 export interface AdminUser {
-  id: string;
+  id: number;
   name: string;
   email: string;
-  role: 'superadmin' | 'manager' | 'support';
-  created_at: string;
+  role: 'Admin' | 'SuperAdmin' | 'Operator' | string;
 }
 
 export interface TokenResponse {
   access_token: string;
   token_type: string;
-  user: ClientUser | AdminUser;
+  role: string;
+  user_id: number;
+  name: string;
+  user?: {
+    id: number;
+    name: string;
+    role: string;
+  };
 }
 
-export interface ClientRegisterPayload {
+export interface LoginCredentials {
+  email: string;
+  password: string;
+}
+
+export interface RegisterData {
   name: string;
   email: string;
   password: string;
   phone?: string;
-  cpf?: string;
   lgpd_consent: boolean;
 }
 
-export interface LoginPayload {
+export interface AdminLoginCredentials {
   email: string;
   password: string;
 }

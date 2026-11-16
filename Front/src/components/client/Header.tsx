@@ -1,121 +1,149 @@
 import React from 'react';
-import { ShoppingBag, User, Sparkles } from 'lucide-react';
-import { SearchBar } from './SearchBar';
+import { ShoppingBag, User, Sparkles, MessageCircle } from 'lucide-react';
+import SearchBar from './SearchBar';
+import { Product } from '../../types/product';
+import { ClientUser } from '../../types/auth';
 
 export interface HeaderProps {
-  searchTerm: string;
-  onSearchChange: (value: string) => void;
   cartItemCount?: number;
-  onOpenCart?: () => void;
-  onOpenAuth?: () => void;
-  user?: { name: string } | null;
-  onNavigateHome?: () => void;
+  onOpenCart: () => void;
+  onOpenAuth: () => void;
+  user?: ClientUser | null;
+  onSelectProduct?: (product: Product) => void;
+  onSearch?: (term: string) => void;
+  categories?: { id: number | string; name: string; slug: string }[];
+  activeCategorySlug?: string;
+  onSelectCategory?: (slug: string) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  searchTerm,
-  onSearchChange,
   cartItemCount = 0,
   onOpenCart,
   onOpenAuth,
   user,
-  onNavigateHome,
+  onSelectProduct,
+  onSearch,
+  categories = [
+    { id: 'all', name: 'Todos', slug: '' },
+    { id: 1, name: 'Skincare', slug: 'skincare' },
+    { id: 2, name: 'Maquiagem', slug: 'maquiagem' },
+    { id: 3, name: 'Cabelos', slug: 'cabelos' },
+    { id: 4, name: 'Perfumes', slug: 'perfumaria' },
+    { id: 5, name: 'Corpo e Banho', slug: 'corpo-e-banho' },
+  ],
+  activeCategorySlug = '',
+  onSelectCategory,
 }) => {
-  const quickSearchTags = ['Vitamina C', 'Batom Velvet', 'Perfume Floral', 'Óleo de Argan'];
-
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-warm-200/80 bg-warm-50/95 backdrop-blur-lg transition-all duration-300 shadow-2xs">
+    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200/80 shadow-xs">
+      {/* Faixa Superior Promocional / Benefícios */}
+      <div className="bg-brand-950 text-brand-100 text-[11px] py-1.5 px-4 text-center font-medium tracking-wide flex items-center justify-center gap-2">
+        <Sparkles className="w-3.5 h-3.5 text-accent-400" />
+        <span>Pagamento Instantâneo via Pix com Aprovação em Segundos & Atendimento Humanizado</span>
+      </div>
+
+      {/* Barra Principal de Navegação */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex h-18 items-center justify-between gap-3 sm:gap-6">
-          {/* Logo & Emblema Botânico */}
-          <div
-            onClick={onNavigateHome}
-            className="flex items-center gap-2.5 cursor-pointer select-none group"
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => e.key === 'Enter' && onNavigateHome && onNavigateHome()}
-          >
-            <div className="flex h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-botanic-800 via-botanic-900 to-botanic-950 text-champagne-400 shadow-soft group-hover:shadow-luxury group-hover:scale-105 transition-all duration-300 border border-botanic-700/40">
-              <Sparkles className="h-5 w-5 animate-pulse" />
-            </div>
+        <div className="h-16 flex items-center justify-between gap-4">
+          {/* Logomarca */}
+          <a href="/" className="flex items-center gap-2 group shrink-0">
+            <span className="w-8 h-8 rounded-full bg-brand-700 text-white flex items-center justify-center font-serif text-lg font-bold group-hover:bg-brand-800 transition-colors shadow-sm">
+              A
+            </span>
             <div className="flex flex-col">
-              <span className="text-xl sm:text-2xl font-bold tracking-tight text-botanic-950 font-serif leading-none">
-                AURA
+              <span className="font-serif text-xl font-bold tracking-tight text-neutral-900 group-hover:text-brand-700 transition-colors leading-none">
+                Aura
               </span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.25em] text-champagne-600 mt-0.5">
-                Botica & Beleza
+              <span className="text-[9px] uppercase tracking-widest text-brand-600 font-semibold leading-tight">
+                Cosméticos
               </span>
             </div>
+          </a>
+
+          {/* Barra de Busca Inteligente Desktop */}
+          <div className="hidden md:flex flex-1 max-w-lg mx-4">
+            <SearchBar onSelectProduct={onSelectProduct} onSearch={onSearch} />
           </div>
 
-          {/* Search bar desktop com tags rápidas */}
-          <div className="hidden md:flex flex-col flex-1 max-w-lg mx-2">
-            <SearchBar value={searchTerm} onChange={onSearchChange} />
-            <div className="flex items-center gap-2 mt-1.5 px-1">
-              <span className="text-[11px] text-warm-500 font-medium">Populares:</span>
-              <div className="flex items-center gap-1.5">
-                {quickSearchTags.map((tag) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => onSearchChange(tag)}
-                    className="text-[11px] text-warm-600 hover:text-botanic-800 hover:underline transition-colors"
-                  >
-                    {tag}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Ações (Conta + Sacola) */}
+          {/* Ações: Perfil, Atendimento e Sacola */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              type="button"
-              onClick={onOpenAuth}
-              className="flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-medium text-warm-800 hover:text-botanic-900 hover:bg-warm-100/80 active:scale-95 transition-all duration-200"
-              aria-label="Minha conta"
+            {/* Atalho WhatsApp */}
+            <a
+              href="/api/whatsapp-redirect"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Atendimento via WhatsApp"
+              className="p-2 text-neutral-600 hover:text-emerald-600 hover:bg-neutral-100 rounded-full transition-colors hidden sm:flex items-center justify-center"
             >
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-warm-200/60 text-warm-700">
-                <User className="h-4.5 w-4.5" />
-              </div>
-              <div className="hidden sm:flex flex-col text-left">
-                <span className="text-[10px] uppercase font-semibold text-warm-500">
-                  {user ? 'Olá,' : 'Bem-vinda,'}
-                </span>
-                <span className="text-xs font-bold text-warm-900 truncate max-w-[100px]">
-                  {user ? user.name.split(' ')[0] : 'Entrar / Criar'}
-                </span>
-              </div>
+              <MessageCircle className="w-5 h-5" />
+            </a>
+
+            {/* Conta / Login */}
+            <button
+              onClick={onOpenAuth}
+              className="flex items-center gap-2 p-2 sm:px-3 sm:py-1.5 text-neutral-700 hover:text-brand-700 hover:bg-brand-50/60 rounded-md transition-colors text-xs font-semibold"
+            >
+              <User className="w-4 h-4 text-brand-700" />
+              <span className="hidden sm:inline">
+                {user ? `Olá, ${user.name.split(' ')[0]}` : 'Entrar'}
+              </span>
             </button>
 
-            {/* Sacola Lateral */}
+            {/* Carrinho / Sacola */}
             <button
-              type="button"
               onClick={onOpenCart}
-              className="relative flex items-center gap-2 h-11 px-3 sm:px-4 rounded-2xl bg-gradient-to-r from-botanic-900 to-botanic-950 text-white hover:from-botanic-950 hover:to-black active:scale-95 shadow-soft hover:shadow-luxury transition-all duration-200 border border-botanic-800/40"
               aria-label="Abrir sacola de compras"
+              className="relative p-2.5 bg-brand-50 hover:bg-brand-100 text-brand-900 rounded-md transition-colors flex items-center gap-2"
             >
-              <div className="relative">
-                <ShoppingBag className="h-5 w-5 text-champagne-300" />
-                {cartItemCount > 0 && (
-                  <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-champagne-500 text-[10px] font-black text-botanic-950 ring-2 ring-botanic-950 shadow-sm animate-bounce">
-                    {cartItemCount > 99 ? '99+' : cartItemCount}
-                  </span>
-                )}
-              </div>
-              <span className="hidden sm:inline text-xs font-semibold tracking-wide text-champagne-200">
+              <ShoppingBag className="w-5 h-5 text-brand-700" />
+              <span className="hidden sm:inline text-xs font-bold text-brand-900">
                 Sacola
               </span>
+              {cartItemCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-brand-700 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center shadow-sm animate-scale-up">
+                  {cartItemCount}
+                </span>
+              )}
             </button>
           </div>
         </div>
 
-        {/* Search bar mobile */}
-        <div className="pb-3 md:hidden">
-          <SearchBar value={searchTerm} onChange={onSearchChange} />
+        {/* Busca em Mobile (segunda linha) */}
+        <div className="md:hidden pb-3">
+          <SearchBar onSelectProduct={onSelectProduct} onSearch={onSearch} />
         </div>
       </div>
+
+      {/* Linha de Categorias / Chips de Rolagem Horizontal Suave */}
+      {categories.length > 0 && (
+        <div className="border-t border-neutral-100 bg-neutral-50/70">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-2 py-2 overflow-x-auto no-scrollbar scroll-smooth">
+              {categories.map((cat) => {
+                const isActive = activeCategorySlug === cat.slug;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => onSelectCategory?.(cat.slug)}
+                    className={`
+                      px-3.5 py-1 rounded-pill text-xs font-medium whitespace-nowrap transition-all
+                      ${
+                        isActive
+                          ? 'bg-brand-700 text-white shadow-xs'
+                          : 'bg-white text-neutral-700 border border-neutral-200 hover:border-brand-300 hover:text-brand-800'
+                      }
+                    `}
+                  >
+                    {cat.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 };
+
+export default Header;
