@@ -11,9 +11,10 @@ Este documento fornece instruções completas para instalação, configuração,
 4. [Instalação e Execução com Docker (Recomendado)](#4-instalação-e-execução-com-docker-recomendado)
 5. [Instalação e Execução Local (Sem Docker)](#5-instalação-e-execução-local-sem-docker)
 6. [Execução dos Testes Automatizados](#6-execução-dos-testes-automatizados)
-7. [Referência Completa de Rotas da API REST](#7-referência-completa-de-rotas-da-api-rest)
-8. [Perfis de Acesso no Painel Backoffice](#8-perfis-de-acesso-no-painel-backoffice)
-9. [Solução de Problemas Frequentes](#9-solução-de-problemas-frequentes)
+7. [Testando via Postman Collection](#7-testando-via-postman-collection)
+8. [Referência Completa de Rotas da API REST](#8-referência-completa-de-rotas-da-api-rest)
+9. [Perfis de Acesso no Painel Backoffice](#9-perfis-de-acesso-no-painel-backoffice)
+10. [Solução de Problemas Frequentes](#10-solução-de-problemas-frequentes)
 
 ---
 
@@ -214,7 +215,25 @@ npm --prefix Front run build
 
 ---
 
-## 7. Referência Completa de Rotas da API REST
+## 7. Testando via Postman Collection
+
+O projeto inclui uma coleção completa e pré-configurada no padrão Postman Collection v2.1.0 no arquivo `postman_collection.json`.
+
+### 7.1 Como importar no Postman:
+1. Abra o Postman (Desktop ou Web).
+2. Clique no botão **Import** (canto superior esquerdo).
+3. Selecione o arquivo `postman_collection.json` localizado na raiz deste projeto.
+4. A coleção **"Aura Cosméticos — E-Commerce API Collection"** será carregada com todas as pastas e requisições organizadas.
+
+### 7.2 Recursos da Coleção:
+- **Variáveis de Coleção**: `{{baseUrl}}` (padrão: `http://localhost:8000`), `{{client_token}}`, `{{admin_token}}`, `{{order_id}}`, etc.
+- **Automação de Autenticação**: Ao executar as requisições de login ou cadastro, os tokens JWT são automaticamente salvos nas variáveis da coleção via scripts de teste pós-execução.
+- **Geração Dinâmica de Idempotência**: No checkout, o cabeçalho `Idempotency-Key` é gerado automaticamente com UUIDv4 para testes de concorrência e retentativa em redes móveis.
+- **Asserções Automatizadas**: Cada requisição contém testes verificando código de status HTTP, tempo de resposta e integridade dos esquemas JSON.
+
+---
+
+## 8. Referência Completa de Rotas da API REST
 
 Todas as rotas públicas e administrativas utilizam o prefixo `/api`.
 
@@ -332,7 +351,7 @@ Requer cabeçalho `Authorization: Bearer <admin_token>` em todas as requisiçõe
 
 ---
 
-## 8. Perfis de Acesso no Painel Backoffice
+## 9. Perfis de Acesso no Painel Backoffice
 
 O sistema utiliza controle de acesso baseado em papéis (RBAC):
 
@@ -342,7 +361,7 @@ O sistema utiliza controle de acesso baseado em papéis (RBAC):
 
 ---
 
-## 9. Solução de Problemas Frequentes
+## 10. Solução de Problemas Frequentes
 
 ### 1. Erro: `type "gist_trgm_ops" does not exist`
 - **Causa**: O banco PostgreSQL foi criado sem a extensão `pg_trgm`.
