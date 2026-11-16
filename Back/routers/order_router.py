@@ -1,13 +1,13 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from Back.core.database import get_read_db_session
 from Back.core.dependencies import get_current_client
 from Back.models.client_model import Client
 from Back.repositories.order_repo import OrderRepository
-from Back.repositories.product_repo import ProductRepository
 from Back.dtos.order_dto import OrderDetailResponse, OrderItemDetailDTO
+from Back.dtos.error_dto import ErrorResponseDTO, COMMON_RESPONSES
 from Back.core.exceptions import NotFoundException
 
 router = APIRouter(prefix="/api/orders", tags=["Orders"])
@@ -15,7 +15,23 @@ router = APIRouter(prefix="/api/orders", tags=["Orders"])
 def get_order_repo(session: AsyncSession = Depends(get_read_db_session)) -> OrderRepository:
     return OrderRepository(session)
 
-@router.get("", response_model=List[OrderDetailResponse])
+@router.get(
+    "",
+    response_model=List[OrderDetailResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Listar pedidos da cliente autenticada",
+    description="""
+Recupera o histórico completo de pedidos realizados pela cliente autenticada via token Bearer JWT.
+Inclui itens adquiridos, valores, método de pagamento utilizado e status atual de expedição.
+""",
+    responses={
+        200: {
+            "model": List[OrderDetailResponse],
+            "description": "Histórico de pedidos da cliente retornado com sucesso."
+        },
+        401: COMMON_RESPONSES[401]
+    }
+)
 async def list_client_orders(
     current_client: Client = Depends(get_current_client),
     order_repo: OrderRepository = Depends(get_order_repo)
@@ -49,9 +65,30 @@ async def list_client_orders(
         ))
     return responses
 
-@router.get("/{order_id}", response_model=OrderDetailResponse)
+@router.get(
+    "/{order_id}",
+    response_model=OrderDetailResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Consultar status e detalhes de um pedido (Order Stepper)",
+    description="""
+Permite o acompanhamento em tempo real do pedido pelo UUID:
+- Status no Order Stepper (`pending` -> `paid` -> `preparing` -> `shipped` -> `delivered` / `cancelled`).
+- Código Pix e QR Code para pagamento caso o status ainda seja pendente.
+- Detalhamento de itens, preços e endereço de entrega.
+""",
+    responses={
+        200: {
+            "model": OrderDetailResponse,
+            "description": "Detalhes do pedido e status logístico atualizados."
+        },
+        404: {
+            "model": ErrorResponseDTO,
+            "description": "Pedido não encontrado ou identificador UUID com formato inválido."
+        }
+    }
+)
 async def get_order_details(
-    order_id: str,
+    order_id: str = Path(..., description="UUID do pedido a ser consultado.", examples=["3fa85f64-5717-4562-b3fc-2c963f66afa6"]),
     order_repo: OrderRepository = Depends(get_order_repo)
 ):
     try:

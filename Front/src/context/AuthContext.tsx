@@ -52,10 +52,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await apiClient.post('/login', payload);
       const { access_token, user: userData } = res.data;
+      const parsedUser = userData || {
+        id: res.data.user_id,
+        user_id: res.data.user_id,
+        name: res.data.name,
+        role: res.data.role,
+      };
       setToken(access_token);
-      setUser(userData);
+      setUser(parsedUser);
       localStorage.setItem('token', access_token);
-      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('user', JSON.stringify(parsedUser));
       setIsAuthModalOpen(false);
     } finally {
       setIsLoading(false);
@@ -70,10 +76,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await apiClient.post('/register', payload);
       const { access_token, user: userData } = res.data;
+      const parsedUser = userData || {
+        id: res.data.user_id,
+        user_id: res.data.user_id,
+        name: res.data.name,
+        role: res.data.role,
+      };
       setToken(access_token);
-      setUser(userData);
+      setUser(parsedUser);
       localStorage.setItem('token', access_token);
-      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('user', JSON.stringify(parsedUser));
       setIsAuthModalOpen(false);
     } finally {
       setIsLoading(false);
@@ -85,10 +97,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await apiClient.post('/admin/login', payload);
       const { access_token, user: adminData } = res.data;
+      const parsedAdmin = adminData || {
+        id: res.data.user_id,
+        user_id: res.data.user_id,
+        name: res.data.name,
+        role: res.data.role,
+      };
       setToken(access_token);
-      setAdminUser(adminData);
+      setAdminUser(parsedAdmin);
       localStorage.setItem('admin_token', access_token);
-      localStorage.setItem('admin_user', JSON.stringify(adminData));
+      localStorage.setItem('admin_user', JSON.stringify(parsedAdmin));
     } finally {
       setIsLoading(false);
     }

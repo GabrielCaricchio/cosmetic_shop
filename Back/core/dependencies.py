@@ -34,6 +34,22 @@ async def get_current_client(
         raise UnauthorizedException("Cliente não encontrado")
     return client
 
+async def get_optional_current_client(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
+    session: AsyncSession = Depends(get_db_session)
+) -> Optional[Client]:
+    if not credentials:
+        return None
+    try:
+        payload = decode_access_token(credentials.credentials)
+        if payload.get("role") != "client":
+            return None
+        client_id = int(payload.get("sub"))
+        repo = ClientRepository(session)
+        return await repo.get_by_id(client_id)
+    except Exception:
+        return None
+
 def require_admin_role(required_role: str = "Admin"):
     async def role_checker(
         payload: dict = Depends(get_current_token_payload),

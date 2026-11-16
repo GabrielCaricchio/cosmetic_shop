@@ -41,12 +41,16 @@ class ReportService:
 
         # 4. Conversion rate simulation
         conversion_rate = 4.2 if total_orders > 0 else 0.0
+        avg_ticket = (daily_revenue / total_orders) if total_orders > 0 else Decimal("0.00")
 
         return SalesMetricsDTO(
             daily_revenue=daily_revenue,
             total_orders_today=total_orders,
             conversion_rate=conversion_rate,
-            critical_stock_count=critical_stock
+            critical_stock_count=critical_stock,
+            total_revenue=daily_revenue,
+            total_orders=total_orders,
+            average_ticket=avg_ticket
         )
 
     async def get_daily_sales_chart(self, days: int = 7) -> List[DailySalesChartPoint]:

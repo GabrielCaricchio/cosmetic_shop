@@ -4,6 +4,7 @@ from sqlalchemy import select, func, or_, desc
 from sqlalchemy.orm import selectinload
 from Back.models.product_model import Product
 from Back.models.product_image_model import ProductImage
+from Back.models.category_model import Category
 from Back.dtos.product_dto import ProductFilterDTO
 
 class ProductRepository:
@@ -40,6 +41,9 @@ class ProductRepository:
         if filter_dto.category_id:
             query = query.where(Product.category_id == filter_dto.category_id)
             count_query = count_query.where(Product.category_id == filter_dto.category_id)
+        elif filter_dto.category_slug:
+            query = query.join(Product.category).where(Category.slug == filter_dto.category_slug)
+            count_query = count_query.join(Product.category).where(Category.slug == filter_dto.category_slug)
 
         if filter_dto.min_price is not None:
             query = query.where(Product.price >= filter_dto.min_price)
@@ -50,13 +54,14 @@ class ProductRepository:
             count_query = count_query.where(Product.price <= filter_dto.max_price)
 
         if clean_search:
-            # pg_trgm similarity matching and substring ILIKE combination
+            # pg_trgm word similarity and similarity matching combined with ILIKE substring
             trgm_cond = or_(
-                func.similarity(Product.name, clean_search) > 0.15,
+                func.word_similarity(clean_search, Product.name) >= 0.35,
+                func.similarity(Product.name, clean_search) >= 0.08,
                 Product.name.ilike(f"%{clean_search}%"),
                 Product.brand.ilike(f"%{clean_search}%")
             )
-            query = query.where(trgm_cond).order_by(desc(func.similarity(Product.name, clean_search)))
+            query = query.where(trgm_cond).order_by(desc(func.word_similarity(clean_search, Product.name)))
             count_query = count_query.where(trgm_cond)
         else:
             query = query.order_by(Product.product_id.desc())

@@ -51,13 +51,23 @@ export const AdminDashboardPage: React.FC = () => {
       if (res.data) {
         setMetrics((prev) => ({
           ...prev,
-          today_revenue: res.data.total_revenue ?? prev.today_revenue,
-          today_orders: res.data.total_orders ?? prev.today_orders,
-          average_ticket: res.data.average_ticket ?? prev.average_ticket,
+          today_revenue: res.data.daily_revenue ?? res.data.total_revenue ?? prev.today_revenue,
+          today_orders: res.data.total_orders_today ?? res.data.total_orders ?? prev.today_orders,
+          average_ticket: res.data.average_ticket ?? (res.data.total_orders_today > 0 ? Number(res.data.daily_revenue) / res.data.total_orders_today : prev.average_ticket),
         }));
-        if (res.data.daily_sales) {
-          setSalesData(res.data.daily_sales);
+      }
+      try {
+        const chartRes = await apiClient.get('/admin/reports/sales/chart');
+        if (chartRes.data && Array.isArray(chartRes.data) && chartRes.data.length > 0) {
+          const formatted = chartRes.data.map((pt: any) => ({
+            date: pt.date,
+            total_sales: Number(pt.amount),
+            order_count: pt.orders_count,
+          }));
+          setSalesData(formatted);
         }
+      } catch {
+        // keep fallback chart points if empty
       }
     } catch (err) {
       console.warn('Usando dados de demonstração para o dashboard:', err);

@@ -18,12 +18,43 @@ def get_checkout_service(
     payment_svc = PaymentService()
     return CheckoutService(db, redis, stock_lock, payment_svc)
 
-@router.post("/payment", status_code=status.HTTP_200_OK)
+@router.post(
+    "/payment",
+    status_code=status.HTTP_200_OK,
+    summary="Webhook de notificação de pagamento (Pix / Gateway)",
+    description="""
+Recebe notificações assíncronas de liquidação de pagamento enviadas pelo gateway financeiro:
+- Se o status for `approved`: o pedido avança para `paid`, as reservas de estoque no Redis são confirmadas e o estoque físico no PostgreSQL é decrementado definitivamente.
+- Se o status for `rejected` ou `cancelled`: o pedido é cancelado e as reservas temporárias no Redis são liberadas imediatamente de volta para a vitrine.
+""",
+    responses={
+        200: {
+            "description": "Notificação processada com sucesso.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "received": True,
+                        "order_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                        "status": "approved"
+                    }
+                }
+            }
+        }
+    }
+)
 async def payment_webhook(
-    payload: dict[str, Any] = Body(...),
+    payload: dict[str, Any] = Body(
+        ...,
+        description="Payload do webhook contendo o order_id e o status do pagamento.",
+        examples=[
+            {
+                "order_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                "status": "approved"
+            }
+        ]
+    ),
     service: CheckoutService = Depends(get_checkout_service)
 ):
-    # Simulated webhook body: {"order_id": "...", "status": "approved" | "rejected" | "cancelled"}
     order_id = payload.get("order_id")
     payment_status = payload.get("status", "approved")
 

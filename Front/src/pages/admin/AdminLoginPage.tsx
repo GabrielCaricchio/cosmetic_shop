@@ -24,8 +24,14 @@ export const AdminLoginPage: React.FC = () => {
       });
 
       const { access_token, user } = res.data;
+      const adminUser = user || {
+        id: res.data.user_id,
+        user_id: res.data.user_id,
+        name: res.data.name,
+        role: res.data.role,
+      };
       localStorage.setItem('admin_token', access_token);
-      localStorage.setItem('admin_user', JSON.stringify(user));
+      localStorage.setItem('admin_user', JSON.stringify(adminUser));
 
       navigate('/admin/dashboard');
     } catch (err: any) {

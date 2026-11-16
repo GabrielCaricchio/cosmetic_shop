@@ -56,6 +56,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
     const params: Record<string, any> = {};
     if (debouncedSearch.trim()) {
+      params.search = debouncedSearch.trim();
       params.q = debouncedSearch.trim();
     }
     if (selectedCategory) {

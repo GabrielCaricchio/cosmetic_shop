@@ -1,0 +1,4147 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Aura Cosméticos — API de E-Commerce & Marketplace",
+    "description": "\n# 💄 Aura Cosméticos — API de E-Commerce & Marketplace de Alta Escala\n\nPlataforma full-stack desacoplada projetada para alta conversão mobile, busca inteligente e resiliência extrema em concorrência de estoque.\n\n---\n\n## 🏛️ Diferenciais Arquiteturais\n\n### 1. 🔍 Busca Fuzzy Inteligente via `pg_trgm` (PostgreSQL)\nCosméticos possuem nomes técnicos, estrangeiros e variações ortográficas frequentes (ex: *\"batom vermêlho\"*, *\"shampô hidratante\"*, *\"serum hialuronico\"*). \nA plataforma utiliza a extensão `pg_trgm` com índices **GiST Trigram Ops**, garantindo buscas instantâneas com tolerância a erros tipográficos e acentuação.\n\n### 2. ⚡ Reserva Atômica Anti-Overselling com Redis Lua Script\nPara evitar *race conditions* quando múltiplos clientes tentam comprar a última unidade do produto:\n- O estoque é reservado no **Redis via Lua Script Atômico**.\n- Em compras simultâneas, exatamente um cliente obtém a reserva e os demais recebem imediatamente `409 Conflict / Esgotado`.\n- As reservas possuem TTL de 30 minutos (1800s), sendo confirmadas no pagamento ou liberadas no cancelamento/expiração.\n\n### 3. 🛡️ Idempotência de Pagamentos e Compras\nO endpoint de checkout aceita o cabeçalho `Idempotency-Key` (UUID). Requisições repetidas com a mesma chave em uma janela de 24 horas retornam o resultado original cacheado no Redis sem duplicar pedidos ou débitos.\n\n### 4. 🔐 Autenticação Robusta & RBAC\n- **Clientes**: Registro com consentimento LGPD, senhas com hash **Argon2id** e tokens **JWT (Bearer)** com 24 horas de validade.\n- **Backoffice**: Acesso restrito a gestores com roles `Admin` e `SuperAdmin`.\n\n---\n\n## 📋 Códigos e Convenções de Erro HTTP\n\nTodos os erros da aplicação seguem o formato padronizado:\n\n```json\n{\n  \"error\": \"NOME_DO_ERRO\",\n  \"message\": \"Descrição amigável em português\",\n  \"details\": null\n}\n```\n\n| Código | Significado | Exemplo de Causa |\n|---|---|---|\n| `400 Bad Request` | Requisição malformada | Parâmetros inválidos ou incompatíveis |\n| `401 Unauthorized` | Autenticação necessária | Token JWT ausente, expirado ou inválido |\n| `403 Forbidden` | Permissão insuficiente | Cliente tentando acessar rota administrativa |\n| `404 Not Found` | Recurso não localizado | Produto, pedido ou categoria inexistente |\n| `409 Conflict` | Conflito de estado / Concorrência | Estoque esgotado via trava Redis ou e-mail já cadastrado |\n| `422 Unprocessable` | Validação de Schema | Campo obrigatório não enviado ou tipo incorreto |\n",
+    "termsOfService": "https://auracosmeticos.com.br/termos",
+    "contact": {
+      "name": "Equipe de Engenharia Aura Cosméticos",
+      "url": "https://auracosmeticos.com.br/",
+      "email": "dev@auracosmeticos.com.br"
+    },
+    "license": {
+      "name": "MIT License",
+      "url": "https://opensource.org/licenses/MIT"
+    },
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000",
+      "description": "Ambiente de Desenvolvimento Local"
+    },
+    {
+      "url": "https://api.auracosmeticos.com.br",
+      "description": "Ambiente de Produção (HTTPS)"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Verificar saúde da API (Health Check)",
+        "description": "Endpoint leve para verificação de liveness e readiness por balanceadores de carga, probes do Kubernetes e monitoramento de uptime.",
+        "operationId": "health_check_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Serviço operacional e saudável.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "status": "healthy",
+                  "service": "cosmetics-ecommerce",
+                  "version": "1.0.0"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/register": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Cadastrar nova cliente",
+        "description": "Cria uma nova conta de cliente na plataforma com hashing seguro de senha via Argon2id e registro explícito do consentimento LGPD.\nRetorna imediatamente o token JWT de acesso e perfil da cliente para login automático.",
+        "operationId": "register_api_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterClientRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Cliente cadastrada com sucesso e token JWT emitido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida (parâmetros ausentes, formato incorreto ou regra de negócio violada).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "E-mail já cadastrado na plataforma.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      }
+    },
+    "/api/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Autenticar cliente (Login)",
+        "description": "Realiza a autenticação da cliente verificando e-mail e hash da senha com Argon2id.\nRetorna o token de acesso Bearer JWT com validade de 24 horas.",
+        "operationId": "login_api_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Autenticação bem-sucedida com emissão do token JWT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais incorretas (e-mail inexistente ou senha inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      }
+    },
+    "/api/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Obter perfil da cliente autenticada",
+        "description": "Retorna os dados cadastrais da cliente atualmente autenticada a partir do token Bearer JWT informado no cabeçalho `Authorization: Bearer <token>`.",
+        "operationId": "get_me_api_me_get",
+        "responses": {
+          "200": {
+            "description": "Perfil da cliente autenticada recuperado com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfileResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Recurso não encontrado (produto, pedido, categoria ou carrinho inexistente).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Listar categorias de cosméticos",
+        "description": "Retorna todas as categorias ativas cadastradas na plataforma (ex: Maquiagem, Cuidados com a Pele, Cabelos, Perfumaria), ordenadas por nome para navegação na vitrine e filtros rápidos.",
+        "operationId": "list_categories_api_categories_get",
+        "responses": {
+          "200": {
+            "description": "Lista de categorias ativas recuperada com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CategoryResponse"
+                  },
+                  "type": "array",
+                  "title": "Response 200 List Categories Api Categories Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/products": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Buscar e filtrar produtos no catálogo (Fuzzy Search via pg_trgm)",
+        "description": "Pesquisa cosméticos na vitrine com suporte a:\n- **Busca Fuzzy Trigram (`pg_trgm`)**: Tolerância a erros ortográficos, variações fonéticas e acentuações (ex: *\"batom vermêlho\"*, *\"shampô hidratação\"*).\n- **Filtros Combinados**: Por categoria (`category_id`), faixa de preço mínima (`min_price`) e máxima (`max_price`).\n- **Paginação Eficiente**: Controle de `page` e `limit` com totalizadores para navegação infinita ou paginada.",
+        "operationId": "list_products_api_products_get",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Número da página (iniciando em 1).",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Número da página (iniciando em 1)."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Itens por página (entre 1 e 100).",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "Itens por página (entre 1 e 100)."
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Termo livre de busca textual com tolerância a erros.",
+              "title": "Search"
+            },
+            "description": "Termo livre de busca textual com tolerância a erros."
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Alias para termo de busca textual.",
+              "title": "Q"
+            },
+            "description": "Alias para termo de busca textual."
+          },
+          {
+            "name": "category_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrar por identificador único de categoria.",
+              "title": "Category Id"
+            },
+            "description": "Filtrar por identificador único de categoria."
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrar por ID ou slug de categoria.",
+              "title": "Category"
+            },
+            "description": "Filtrar por ID ou slug de categoria."
+          },
+          {
+            "name": "min_price",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Preço mínimo em BRL.",
+              "title": "Min Price"
+            },
+            "description": "Preço mínimo em BRL."
+          },
+          {
+            "name": "max_price",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Preço máximo em BRL.",
+              "title": "Max Price"
+            },
+            "description": "Preço máximo em BRL."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de produtos e metadados de paginação calculados.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedProductsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      }
+    },
+    "/api/products/{id_or_slug}": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Obter detalhes de um cosmético por ID ou Slug (PDP)",
+        "description": "Recupera as informações completas de um produto para exibição na página de detalhes (Product Detail Page - PDP):\n- Informações comerciais (Nome, Marca, Preço, Fotos).\n- Informações dermatológicas (Ingredientes/Composição INCI e Modo de Uso).\n- Saldo disponível em estoque para validação de compra.\nPode ser consultado tanto pelo ID numérico (ex: `1`) quanto pelo slug de URL (ex: `batom-matte-velvet-red`).",
+        "operationId": "get_product_api_products__id_or_slug__get",
+        "parameters": [
+          {
+            "name": "id_or_slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID numérico ou slug textual do produto.",
+              "examples": [
+                "batom-matte-velvet-red"
+              ],
+              "title": "Id Or Slug"
+            },
+            "description": "ID numérico ou slug textual do produto."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalhes completos do produto.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cosmético não encontrado ou inativo no catálogo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cart": {
+      "get": {
+        "tags": [
+          "Cart"
+        ],
+        "summary": "Obter carrinho de compras da sessão",
+        "description": "Recupera os itens, quantidades, subtotais calculados e valor total consolidado do carrinho de compras armazenado em cache volátil no Redis (TTL de 7 dias).\nIdentificado pelo cabeçalho `X-Cart-ID`.",
+        "operationId": "view_cart_api_cart_get",
+        "parameters": [
+          {
+            "name": "X-Cart-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID identificador da sessão de carrinho no Redis. Se não enviado, um novo é gerado e retornado no cabeçalho X-Cart-ID da resposta.",
+              "title": "X-Cart-Id"
+            },
+            "description": "UUID identificador da sessão de carrinho no Redis. Se não enviado, um novo é gerado e retornado no cabeçalho X-Cart-ID da resposta."
+          },
+          {
+            "name": "X-Guest-Cart-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Alias de cabeçalho para carrinho de visitante.",
+              "title": "X-Guest-Cart-Id"
+            },
+            "description": "Alias de cabeçalho para carrinho de visitante."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado atual do carrinho de compras retornado com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cart/items": {
+      "post": {
+        "tags": [
+          "Cart"
+        ],
+        "summary": "Adicionar produto ao carrinho",
+        "description": "Insere ou incrementa a quantidade de um cosmético no carrinho de compras no Redis:\n- Valida a existência do produto no catálogo ativo.\n- Verifica se a quantidade solicitada não excede o estoque disponível.\n- Recalcula automaticamente os subtotais e valor total da sacola.",
+        "operationId": "add_item_api_cart_items_post",
+        "parameters": [
+          {
+            "name": "X-Cart-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID identificador da sessão de carrinho no Redis. Se não enviado, um novo é gerado e retornado no cabeçalho X-Cart-ID da resposta.",
+              "title": "X-Cart-Id"
+            },
+            "description": "UUID identificador da sessão de carrinho no Redis. Se não enviado, um novo é gerado e retornado no cabeçalho X-Cart-ID da resposta."
+          },
+          {
+            "name": "X-Guest-Cart-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Alias de cabeçalho para carrinho de visitante.",
+              "title": "X-Guest-Cart-Id"
+            },
+            "description": "Alias de cabeçalho para carrinho de visitante."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddCartItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Item adicionado com sucesso ao carrinho e estado atualizado retornado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartDTO"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida (parâmetros ausentes, formato incorreto ou regra de negócio violada).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Produto inexistente ou inativo no catálogo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      }
+    },
+    "/api/cart/items/{product_id}": {
+      "put": {
+        "tags": [
+          "Cart"
+        ],
+        "summary": "Atualizar quantidade de um item no carrinho",
+        "description": "Atualiza a quantidade de um cosmético específico presente no carrinho.\nSe a quantidade informada for zero ou negativa, o item é removido automaticamente da sacola.",
+        "operationId": "update_item_api_cart_items__product_id__put",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "ID do cosmético a ter a quantidade alterada.",
+              "examples": [
+                1
+              ],
+              "title": "Product Id"
+            },
+            "description": "ID do cosmético a ter a quantidade alterada."
+          },
+          {
+            "name": "X-Cart-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID identificador da sessão de carrinho no Redis. Se não enviado, um novo é gerado e retornado no cabeçalho X-Cart-ID da resposta.",
+              "title": "X-Cart-Id"
+            },
+            "description": "UUID identificador da sessão de carrinho no Redis. Se não enviado, um novo é gerado e retornado no cabeçalho X-Cart-ID da resposta."
+          },
+          {
+            "name": "X-Guest-Cart-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Alias de cabeçalho para carrinho de visitante.",
+              "title": "X-Guest-Cart-Id"
+            },
+            "description": "Alias de cabeçalho para carrinho de visitante."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCartItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Quantidade atualizada e novo total do carrinho calculado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartDTO"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida (parâmetros ausentes, formato incorreto ou regra de negócio violada).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Produto não encontrado no catálogo para validação.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Cart"
+        ],
+        "summary": "Remover produto do carrinho",
+        "description": "Remove integralmente uma linha de produto do carrinho no Redis e retorna a sacola atualizada com novos subtotais.",
+        "operationId": "remove_item_api_cart_items__product_id__delete",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "ID do produto a ser removido do carrinho.",
+              "examples": [
+                1
+              ],
+              "title": "Product Id"
+            },
+            "description": "ID do produto a ser removido do carrinho."
+          },
+          {
+            "name": "X-Cart-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID identificador da sessão de carrinho no Redis. Se não enviado, um novo é gerado e retornado no cabeçalho X-Cart-ID da resposta.",
+              "title": "X-Cart-Id"
+            },
+            "description": "UUID identificador da sessão de carrinho no Redis. Se não enviado, um novo é gerado e retornado no cabeçalho X-Cart-ID da resposta."
+          },
+          {
+            "name": "X-Guest-Cart-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Alias de cabeçalho para carrinho de visitante.",
+              "title": "X-Guest-Cart-Id"
+            },
+            "description": "Alias de cabeçalho para carrinho de visitante."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Item excluído com sucesso e carrinho recalculado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartDTO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Produto não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/checkout": {
+      "post": {
+        "tags": [
+          "Checkout"
+        ],
+        "summary": "Processar checkout completo com reserva atômica de estoque",
+        "description": "Finaliza a compra dos itens do carrinho para a cliente autenticada:\n1. **Idempotência Garantida**: Valida o cabeçalho `Idempotency-Key` no Redis (TTL de 24h) prevenindo duplicidade de cobranças em retentativas de rede.\n2. **Reserva Atômica Anti-Overselling**: Bloqueia os estoques dos cosméticos via **Lua Script Atômico no Redis** (TTL de 30 minutos). Em caso de concorrência simultânea sem saldo, falha imediatamente com `409 Conflict / Esgotado`.\n3. **Criação do Pedido**: Registra o pedido no PostgreSQL com status `pending`.\n4. **Geração de Pagamento**: Emite o pagamento (Pix Copia e Cola / QR Code ou sessão Stripe) com tempo limite de 30 minutos.",
+        "operationId": "process_checkout_api_checkout_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Chave única de idempotência (UUID) para garantir que cobranças ou pedidos duplicados não sejam executados acidentalmente.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Chave única de idempotência (UUID) para garantir que cobranças ou pedidos duplicados não sejam executados acidentalmente."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequestDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Pedido aceito e processado com reserva atômica de estoque e dados de pagamento gerados.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutResponseDTO"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida (parâmetros ausentes, formato incorreto ou regra de negócio violada).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Um ou mais produtos solicitados não foram encontrados no catálogo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estoque esgotado no milissegundo da compra (Anti-Overselling Redis Lock).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      }
+    },
+    "/api/checkout/direct": {
+      "post": {
+        "tags": [
+          "Checkout"
+        ],
+        "summary": "Checkout direto de 1 clique ('Comprar Agora')",
+        "description": "Executa a finalização instantânea de 1 clique para um único cosmético sem passar pelo carrinho de compras:\n- Obtém reserva atômica imediata via Redis.\n- Cria o pedido e gera o QR Code / instrução de pagamento em milissegundos.\n- Otimizado para conversão móvel na Product Detail Page (PDP).",
+        "operationId": "direct_checkout_api_checkout_direct_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Chave única de idempotência para o checkout de 1 clique.",
+              "title": "Idempotency-Key"
+            },
+            "description": "Chave única de idempotência para o checkout de 1 clique."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DirectCheckoutRequestDTO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Pedido direto gerado com sucesso e reserva de estoque efetuada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutResponseDTO"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida (parâmetros ausentes, formato incorreto ou regra de negócio violada).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Produto inexistente ou inativo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Estoque esgotado para o produto solicitado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      }
+    },
+    "/api/orders": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Listar pedidos da cliente autenticada",
+        "description": "Recupera o histórico completo de pedidos realizados pela cliente autenticada via token Bearer JWT.\nInclui itens adquiridos, valores, método de pagamento utilizado e status atual de expedição.",
+        "operationId": "list_client_orders_api_orders_get",
+        "responses": {
+          "200": {
+            "description": "Histórico de pedidos da cliente retornado com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrderDetailResponse"
+                  },
+                  "type": "array",
+                  "title": "Response 200 List Client Orders Api Orders Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/orders/{order_id}": {
+      "get": {
+        "tags": [
+          "Orders"
+        ],
+        "summary": "Consultar status e detalhes de um pedido (Order Stepper)",
+        "description": "Permite o acompanhamento em tempo real do pedido pelo UUID:\n- Status no Order Stepper (`pending` -> `paid` -> `preparing` -> `shipped` -> `delivered` / `cancelled`).\n- Código Pix e QR Code para pagamento caso o status ainda seja pendente.\n- Detalhamento de itens, preços e endereço de entrega.",
+        "operationId": "get_order_details_api_orders__order_id__get",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "UUID do pedido a ser consultado.",
+              "examples": [
+                "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+              ],
+              "title": "Order Id"
+            },
+            "description": "UUID do pedido a ser consultado."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalhes do pedido e status logístico atualizados.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pedido não encontrado ou identificador UUID com formato inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhooks/payment": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Webhook de notificação de pagamento (Pix / Gateway)",
+        "description": "Recebe notificações assíncronas de liquidação de pagamento enviadas pelo gateway financeiro:\n- Se o status for `approved`: o pedido avança para `paid`, as reservas de estoque no Redis são confirmadas e o estoque físico no PostgreSQL é decrementado definitivamente.\n- Se o status for `rejected` ou `cancelled`: o pedido é cancelado e as reservas temporárias no Redis são liberadas imediatamente de volta para a vitrine.",
+        "operationId": "payment_webhook_api_webhooks_payment_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload",
+                "description": "Payload do webhook contendo o order_id e o status do pagamento.",
+                "examples": [
+                  {
+                    "order_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                    "status": "approved"
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Notificação processada com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "received": true,
+                  "order_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+                  "status": "approved"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/whatsapp-redirect": {
+      "get": {
+        "tags": [
+          "Support"
+        ],
+        "summary": "Redirecionar para atendimento humano no WhatsApp",
+        "description": "Gera e redireciona (HTTP 307) a cliente diretamente para a conversa oficial no WhatsApp da Aura Cosméticos com mensagem contextual pré-preenchida:\n- Com `order_id`: Gera mensagem informando o número do pedido para suporte logístico/pagamento.\n- Com `product_name`: Gera mensagem com dúvida técnica ou dermatológica sobre o cosmético específico.\n- Sem parâmetros: Inicia conversa com saudação geral de atendimento ao cliente.",
+        "operationId": "whatsapp_redirect_api_whatsapp_redirect_get",
+        "parameters": [
+          {
+            "name": "product_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Nome do produto para tirar dúvidas de ingredientes ou aplicação.",
+              "examples": [
+                "Sérum Facial Vitamina C"
+              ],
+              "title": "Product Name"
+            },
+            "description": "Nome do produto para tirar dúvidas de ingredientes ou aplicação."
+          },
+          {
+            "name": "order_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "UUID do pedido para dúvidas de entrega ou pagamento.",
+              "examples": [
+                "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+              ],
+              "title": "Order Id"
+            },
+            "description": "UUID do pedido para dúvidas de entrega ou pagamento."
+          }
+        ],
+        "responses": {
+          "307": {
+            "description": "Redirecionamento temporário para a API wa.me do WhatsApp com a mensagem codificada.",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/login": {
+      "post": {
+        "tags": [
+          "Admin Auth"
+        ],
+        "summary": "Login administrativo (Backoffice RBAC)",
+        "description": "Autentica administradores e gestores do sistema validando as credenciais no banco de dados e verificando a senha com **Argon2id**.\nRetorna o token JWT contendo os papéis administrativos autorizados (`role: 'Admin'` ou `'SuperAdmin'`).",
+        "operationId": "admin_login_api_admin_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Login administrativo autorizado com token JWT emitido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenciais administrativas incorretas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      }
+    },
+    "/api/admin/products": {
+      "post": {
+        "tags": [
+          "Admin Products"
+        ],
+        "summary": "Cadastrar novo cosmético no catálogo",
+        "description": "Cria um novo produto de beleza no banco de dados e adiciona suas fotos à galeria.\nExige token JWT com perfil administrativo (`Admin` ou `SuperAdmin`).",
+        "operationId": "create_product_api_admin_products_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Cosmético cadastrado com sucesso no catálogo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida (parâmetros ausentes, formato incorreto ou regra de negócio violada).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Slug de produto já em uso por outro cosmético.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/products/{product_id}": {
+      "put": {
+        "tags": [
+          "Admin Products"
+        ],
+        "summary": "Atualizar dados ou estoque de um cosmético",
+        "description": "Modifica informações de catálogo de um produto (preço, saldo em estoque, fórmula/ingredientes, descrição ou status ativo).\nExige autenticação administrativa.",
+        "operationId": "update_product_api_admin_products__product_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "ID do produto a ser editado.",
+              "examples": [
+                1
+              ],
+              "title": "Product Id"
+            },
+            "description": "ID do produto a ser editado."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProductUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Produto atualizado com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida (parâmetros ausentes, formato incorreto ou regra de negócio violada).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cosmético não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Admin Products"
+        ],
+        "summary": "Desativar produto do catálogo (Soft Delete)",
+        "description": "Inativa um cosmético (`is_active = False`), ocultando-o da vitrine pública de compras sem quebrar o histórico de pedidos passados.\nExige autenticação administrativa.",
+        "operationId": "delete_product_api_admin_products__product_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "description": "ID do produto a ser desativado.",
+              "examples": [
+                1
+              ],
+              "title": "Product Id"
+            },
+            "description": "ID do produto a ser desativado."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Produto desativado com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "message": "Produto 1 desativado com sucesso"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Produto não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/orders": {
+      "get": {
+        "tags": [
+          "Admin Orders"
+        ],
+        "summary": "Listar todos os pedidos da plataforma (Backoffice)",
+        "description": "Permite ao time operacional e de logística visualizar todos os pedidos com filtros por status (`pending`, `paid`, `preparing`, `shipped`, `delivered`, `cancelled`) e paginação.\nExige autenticação administrativa.",
+        "operationId": "list_all_orders_api_admin_orders_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filtrar por status do pedido.",
+              "examples": [
+                "paid"
+              ],
+              "title": "Status"
+            },
+            "description": "Filtrar por status do pedido."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Quantidade máxima de pedidos a retornar.",
+              "default": 50,
+              "title": "Limit"
+            },
+            "description": "Quantidade máxima de pedidos a retornar."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Deslocamento para paginação.",
+              "default": 0,
+              "title": "Offset"
+            },
+            "description": "Deslocamento para paginação."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de pedidos da loja retornada com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderDetailResponse"
+                  },
+                  "title": "Response 200 List All Orders Api Admin Orders Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      }
+    },
+    "/api/admin/orders/{order_id}/status": {
+      "patch": {
+        "tags": [
+          "Admin Orders"
+        ],
+        "summary": "Atualizar status logístico de um pedido (PATCH)",
+        "description": "Avança o pedido no ciclo logístico (ex: de `paid` para `preparing`, depois `shipped` e `delivered`, ou `cancelled`).\nExige autenticação administrativa.",
+        "operationId": "update_order_status_api_admin_orders__order_id__status_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "UUID do pedido a ser atualizado.",
+              "examples": [
+                "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+              ],
+              "title": "Order Id"
+            },
+            "description": "UUID do pedido a ser atualizado."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrderStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Status do pedido alterado com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida (parâmetros ausentes, formato incorreto ou regra de negócio violada).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pedido não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Admin Orders"
+        ],
+        "summary": "Atualizar status logístico de um pedido (PUT)",
+        "description": "Avança o pedido no ciclo logístico (ex: de `paid` para `preparing`, depois `shipped` e `delivered`, ou `cancelled`).\nExige autenticação administrativa.",
+        "operationId": "update_order_status_api_admin_orders__order_id__status_put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "UUID do pedido a ser atualizado.",
+              "examples": [
+                "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+              ],
+              "title": "Order Id"
+            },
+            "description": "UUID do pedido a ser atualizado."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrderStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Status do pedido alterado com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requisição inválida (parâmetros ausentes, formato incorreto ou regra de negócio violada).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pedido não encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      }
+    },
+    "/api/admin/reports/sales": {
+      "get": {
+        "tags": [
+          "Admin Reports"
+        ],
+        "summary": "Obter indicadores consolidados de vendas (KPIs)",
+        "description": "Gera métricas financeiras e operacionais em tempo real para o dashboard do administrador:\n- Faturamento consolidado das últimas 24 horas (`daily_revenue`).\n- Quantidade total de pedidos aprovados hoje (`total_orders_today`).\n- Taxa média de conversão da loja (`conversion_rate`).\n- Alerta de produtos com estoque crítico (`critical_stock_count` <= 3 unidades).\nExige autenticação administrativa.",
+        "operationId": "get_sales_metrics_api_admin_reports_sales_get",
+        "responses": {
+          "200": {
+            "description": "Indicadores de vendas consolidados com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesMetricsDTO"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/reports/sales/chart": {
+      "get": {
+        "tags": [
+          "Admin Reports"
+        ],
+        "summary": "Obter série temporal de evolução de vendas diárias",
+        "description": "Gera os pontos cronológicos de vendas por dia (data, faturamento em BRL e contagem de pedidos) para renderização do gráfico de evolução no painel gerencial.\nExige autenticação administrativa.",
+        "operationId": "get_sales_chart_api_admin_reports_sales_chart_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 90,
+              "minimum": 1,
+              "description": "Janela de histórico em dias (máx. 90 dias).",
+              "examples": [
+                7
+              ],
+              "default": 7,
+              "title": "Days"
+            },
+            "description": "Janela de histórico em dias (máx. 90 dias)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Série temporal de vendas diárias calculada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DailySalesChartPoint"
+                  },
+                  "title": "Response 200 Get Sales Chart Api Admin Reports Sales Chart Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Erro de validação semântica nos campos da requisição (Pydantic Validation Error)."
+          }
+        }
+      }
+    },
+    "/api/admin/inventory/reservations": {
+      "get": {
+        "tags": [
+          "Admin Inventory"
+        ],
+        "summary": "Auditar travas e reservas atômicas de estoque no Redis",
+        "description": "Monitora em tempo real todas as chaves ativas do padrão `stock:reserved:*:*` no Redis:\n- Permite verificar quais pedidos detêm travas atômicas anti-overselling.\n- Exibe o produto bloqueado, a quantidade retida e a contagem regressiva do TTL em segundos (limite padrão de 1800s).\n- Fundamental para diagnóstico de concorrência e integridade de estoque durante campanhas de pico.\nExige autenticação administrativa.",
+        "operationId": "list_active_reservations_api_admin_inventory_reservations_get",
+        "responses": {
+          "200": {
+            "description": "Lista de reservas temporárias ativas no Redis auditadas com sucesso.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StockReservationItemDTO"
+                  },
+                  "type": "array",
+                  "title": "Response 200 List Active Reservations Api Admin Inventory Reservations Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/inventory/reservations/{key}": {
+      "delete": {
+        "tags": [
+          "Admin Inventory"
+        ],
+        "summary": "Liberar manualmente trava atômica de estoque no Redis",
+        "description": "Remove a reserva temporária retida no Redis e devolve o saldo de unidades de volta ao estoque disponível.\nExige perfil administrativo com permissão de gestão.",
+        "operationId": "release_reservation_api_admin_inventory_reservations__key__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Chave completa da reserva no Redis (ex: stock:reserved:order-uuid:1).",
+              "title": "Key"
+            },
+            "description": "Chave completa da reserva no Redis (ex: stock:reserved:order-uuid:1)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trava liberada com sucesso e estoque restituído ao Redis.",
+            "content": {
+              "application/json": {
+                "schema": {},
+                "example": {
+                  "message": "Trava stock:reserved:order123:1 liberada com sucesso."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Não autorizado (token JWT ausente, expirado ou assinatura inválida).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso proibido (usuário autenticado não possui o papel/role necessário para este recurso).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDTO"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddCartItemRequest": {
+        "properties": {
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id",
+            "description": "ID do cosmético a ser adicionado ao carrinho.",
+            "examples": [
+              1
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Quantity",
+            "description": "Quantidade a ser incrementada.",
+            "default": 1,
+            "examples": [
+              1
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id"
+        ],
+        "title": "AddCartItemRequest",
+        "example": {
+          "product_id": 1,
+          "quantity": 1
+        }
+      },
+      "AdminLoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "E-mail corporativo do administrador ou gestor da plataforma.",
+            "examples": [
+              "admin@auracosmeticos.com.br"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "Senha do administrador protegida com hash Argon2id.",
+            "examples": [
+              "AdminSuperSeguro#2026"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "AdminLoginRequest",
+        "example": {
+          "email": "admin@auracosmeticos.com.br",
+          "password": "AdminSuperSeguro#2026"
+        }
+      },
+      "CartDTO": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CartItemDTO"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Lista de itens presentes no carrinho.",
+            "default": []
+          },
+          "total_amount": {
+            "type": "string",
+            "title": "Total Amount",
+            "description": "Valor total acumulado dos itens no carrinho em BRL.",
+            "default": "0.00",
+            "examples": [
+              99.8
+            ]
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items",
+            "description": "Soma de todas as quantidades de itens no carrinho.",
+            "default": 0,
+            "examples": [
+              2
+            ]
+          }
+        },
+        "type": "object",
+        "title": "CartDTO",
+        "example": {
+          "items": [
+            {
+              "image_url": "https://images.unsplash.com/photo-1586495777744-4413f21062fa",
+              "name": "Batom Matte Velvet Red",
+              "price": 49.9,
+              "product_id": 1,
+              "quantity": 2,
+              "subtotal": 99.8
+            }
+          ],
+          "total_amount": 99.8,
+          "total_items": 2
+        }
+      },
+      "CartItemDTO": {
+        "properties": {
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id",
+            "description": "ID do produto no carrinho.",
+            "examples": [
+              1
+            ]
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Nome do cosmético.",
+            "examples": [
+              "Batom Matte Velvet Red"
+            ]
+          },
+          "price": {
+            "type": "string",
+            "title": "Price",
+            "description": "Preço unitário em BRL.",
+            "examples": [
+              49.9
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Quantity",
+            "description": "Quantidade selecionada.",
+            "examples": [
+              2
+            ]
+          },
+          "subtotal": {
+            "type": "string",
+            "title": "Subtotal",
+            "description": "Subtotal calculado (preço * quantidade).",
+            "examples": [
+              99.8
+            ]
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url",
+            "description": "URL da imagem principal.",
+            "examples": [
+              "https://images.unsplash.com/photo-1586495777744-4413f21062fa"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "name",
+          "price",
+          "quantity",
+          "subtotal"
+        ],
+        "title": "CartItemDTO"
+      },
+      "CategoryResponse": {
+        "properties": {
+          "category_id": {
+            "type": "integer",
+            "title": "Category Id",
+            "description": "ID sequencial único da categoria.",
+            "examples": [
+              1
+            ]
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Nome da categoria.",
+            "examples": [
+              "Cuidados com a Pele"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug",
+            "description": "Slug amigável para SEO e filtros de vitrine.",
+            "examples": [
+              "cuidados-com-a-pele"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Data e hora de criação da categoria."
+          }
+        },
+        "type": "object",
+        "required": [
+          "category_id",
+          "name",
+          "slug",
+          "created_at"
+        ],
+        "title": "CategoryResponse",
+        "example": {
+          "category_id": 1,
+          "created_at": "2026-11-16T08:00:00Z",
+          "name": "Cuidados com a Pele",
+          "slug": "cuidados-com-a-pele"
+        }
+      },
+      "CheckoutItemDTO": {
+        "properties": {
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id",
+            "description": "ID do produto.",
+            "examples": [
+              1
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Quantity",
+            "description": "Quantidade comprada.",
+            "examples": [
+              2
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "quantity"
+        ],
+        "title": "CheckoutItemDTO"
+      },
+      "CheckoutRequestDTO": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CheckoutItemDTO"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Items",
+            "description": "Lista de cosméticos para fechar o pedido."
+          },
+          "shipping_address": {
+            "$ref": "#/components/schemas/ShippingAddressDTO",
+            "description": "Endereço de entrega completo."
+          },
+          "payment_method": {
+            "type": "string",
+            "title": "Payment Method",
+            "description": "Método de pagamento ('pix' ou 'credit_card').",
+            "default": "pix",
+            "examples": [
+              "pix"
+            ]
+          },
+          "customer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerDTO"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dados do cliente para checkout direto ou guest."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "shipping_address"
+        ],
+        "title": "CheckoutRequestDTO",
+        "example": {
+          "items": [
+            {
+              "product_id": 1,
+              "quantity": 2
+            }
+          ],
+          "payment_method": "pix",
+          "shipping_address": {
+            "city": "São Paulo",
+            "complement": "Apto 42B",
+            "neighborhood": "Bela Vista",
+            "number": "1000",
+            "state": "SP",
+            "street": "Avenida Paulista",
+            "zip_code": "01310-100"
+          }
+        }
+      },
+      "CheckoutResponseDTO": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "title": "Order Id",
+            "description": "UUID identificador único do pedido gerado.",
+            "examples": [
+              "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+            ]
+          },
+          "total_amount": {
+            "type": "string",
+            "title": "Total Amount",
+            "description": "Valor total consolidado do pedido em BRL.",
+            "examples": [
+              99.8
+            ]
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Status inicial do pedido ('pending').",
+            "examples": [
+              "pending"
+            ]
+          },
+          "payment_method": {
+            "type": "string",
+            "title": "Payment Method",
+            "description": "Método de pagamento selecionado.",
+            "examples": [
+              "pix"
+            ]
+          },
+          "pix_qr_code_base64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pix Qr Code Base64",
+            "description": "Imagem do QR Code Pix em Base64 (Data URI) para leitura visual."
+          },
+          "pix_copy_paste": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pix Copy Paste",
+            "description": "Código Pix Copia e Cola (EMVCo) para pagamento no app do banco.",
+            "examples": [
+              "00020126580014br.gov.bcb.pix..."
+            ]
+          },
+          "expires_at": {
+            "type": "string",
+            "title": "Expires At",
+            "description": "Data/hora ISO 8601 de expiração do pagamento e reserva de estoque.",
+            "examples": [
+              "2026-11-16T09:15:00Z"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_id",
+          "total_amount",
+          "status",
+          "payment_method",
+          "expires_at"
+        ],
+        "title": "CheckoutResponseDTO",
+        "example": {
+          "expires_at": "2026-11-16T09:15:00Z",
+          "order_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "payment_method": "pix",
+          "pix_copy_paste": "00020126580014br.gov.bcb.pix01363fa85f64-5717-4562-b3fc-2c963f66afa65204000053039865400599.805802BR5925COSMETICOS MULTIMARCA6009SAO PAULO62070503***6304ABCD",
+          "pix_qr_code_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+          "status": "pending",
+          "total_amount": 99.8
+        }
+      },
+      "CustomerDTO": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Nome completo da cliente.",
+            "examples": [
+              "Maria Silva"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "E-mail de contato.",
+            "examples": [
+              "maria.silva@exemplo.com"
+            ]
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone",
+            "description": "Telefone / WhatsApp.",
+            "examples": [
+              "11987654321"
+            ]
+          },
+          "cpf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpf",
+            "description": "Número de CPF.",
+            "examples": [
+              "123.456.789-00"
+            ]
+          },
+          "lgpd_consent": {
+            "type": "boolean",
+            "title": "Lgpd Consent",
+            "description": "Consentimento LGPD.",
+            "default": true,
+            "examples": [
+              true
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email"
+        ],
+        "title": "CustomerDTO"
+      },
+      "DailySalesChartPoint": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "title": "Date",
+            "description": "Data no formato AAAA-MM-DD.",
+            "examples": [
+              "2026-11-16"
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount",
+            "description": "Volume financeiro transacionado no dia em BRL.",
+            "examples": [
+              12340.0
+            ]
+          },
+          "orders_count": {
+            "type": "integer",
+            "title": "Orders Count",
+            "description": "Número de pedidos fechados no dia.",
+            "examples": [
+              115
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "amount",
+          "orders_count"
+        ],
+        "title": "DailySalesChartPoint"
+      },
+      "DirectCheckoutRequestDTO": {
+        "properties": {
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id",
+            "description": "ID do produto para compra imediata (1-Click Buy Now).",
+            "examples": [
+              1
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Quantity",
+            "description": "Quantidade.",
+            "default": 1,
+            "examples": [
+              1
+            ]
+          },
+          "shipping_address": {
+            "$ref": "#/components/schemas/ShippingAddressDTO",
+            "description": "Endereço de entrega."
+          },
+          "payment_method": {
+            "type": "string",
+            "title": "Payment Method",
+            "description": "Método de pagamento ('pix' ou 'credit_card').",
+            "default": "pix",
+            "examples": [
+              "pix"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "shipping_address"
+        ],
+        "title": "DirectCheckoutRequestDTO",
+        "example": {
+          "payment_method": "pix",
+          "product_id": 1,
+          "quantity": 1,
+          "shipping_address": {
+            "city": "São Paulo",
+            "complement": "Apto 42B",
+            "neighborhood": "Bela Vista",
+            "number": "1000",
+            "state": "SP",
+            "street": "Avenida Paulista",
+            "zip_code": "01310-100"
+          }
+        }
+      },
+      "ErrorResponseDTO": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Código padronizado do erro em maiúsculas (ex: BAD_REQUEST, NOT_FOUND, OUT_OF_STOCK, UNAUTHORIZED, FORBIDDEN, CONFLICT).",
+            "examples": [
+              "NOT_FOUND"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Mensagem descritiva e amigável em português para exibição ou log.",
+            "examples": [
+              "Produto 42 não encontrado"
+            ]
+          },
+          "details": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details",
+            "description": "Informações complementares, validações de campos ou rastreamento interno de erro.",
+            "examples": [
+              {
+                "field": "product_id",
+                "issue": "Produto inativo ou inexistente"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "ErrorResponseDTO",
+        "description": "Modelo padrão para respostas de erro da API Aura Cosméticos.",
+        "examples": [
+          {
+            "details": {
+              "available": 0,
+              "product_id": 1,
+              "requested": 3
+            },
+            "error": "OUT_OF_STOCK",
+            "message": "Estoque esgotado para o produto 'Batom Matte Red Velvet'."
+          },
+          {
+            "error": "UNAUTHORIZED",
+            "message": "Cabeçalho de autenticação ausente ou token inválido."
+          },
+          {
+            "error": "NOT_FOUND",
+            "message": "Recurso solicitado não foi encontrado no catálogo."
+          }
+        ]
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "E-mail de cadastro da cliente.",
+            "examples": [
+              "ana.beatriz@exemplo.com.br"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "Senha cadastrada.",
+            "examples": [
+              "SenhaSegura#2026"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "example": {
+          "email": "ana.beatriz@exemplo.com.br",
+          "password": "SenhaSegura#2026"
+        }
+      },
+      "OrderDetailResponse": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "title": "Order Id",
+            "description": "UUID do pedido.",
+            "examples": [
+              "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+            ]
+          },
+          "client_id": {
+            "type": "integer",
+            "title": "Client Id",
+            "description": "ID da cliente compradora.",
+            "examples": [
+              1
+            ]
+          },
+          "total_amount": {
+            "type": "string",
+            "title": "Total Amount",
+            "description": "Valor total do pedido em BRL.",
+            "examples": [
+              99.8
+            ]
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Status atual no ciclo de vida (pending, paid, preparing, shipped, delivered, cancelled).",
+            "examples": [
+              "pending"
+            ]
+          },
+          "shipping_address": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Shipping Address",
+            "description": "Endereço de entrega registrado no pedido."
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderItemDetailDTO"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Lista de cosméticos inclusos no pedido.",
+            "default": []
+          },
+          "payment_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Method",
+            "description": "Método de pagamento ('pix' ou 'credit_card').",
+            "examples": [
+              "pix"
+            ]
+          },
+          "pix_qr_code_base64": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pix Qr Code Base64",
+            "description": "QR Code Pix caso o pagamento esteja pendente."
+          },
+          "pix_copy_paste": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pix Copy Paste",
+            "description": "Código Pix Copia e Cola para pagamento."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Data e hora de emissão do pedido."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Data e hora da última alteração de status."
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_id",
+          "client_id",
+          "total_amount",
+          "status",
+          "shipping_address",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OrderDetailResponse",
+        "example": {
+          "client_id": 1,
+          "created_at": "2026-11-16T08:00:00Z",
+          "items": [
+            {
+              "product_id": 1,
+              "product_name": "Batom Matte Velvet Red",
+              "quantity": 2,
+              "subtotal": 99.8,
+              "unit_price": 49.9
+            }
+          ],
+          "order_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "payment_method": "pix",
+          "pix_copy_paste": "00020126580014br.gov.bcb.pix...",
+          "pix_qr_code_base64": "data:image/png;base64,...",
+          "shipping_address": {
+            "city": "São Paulo",
+            "complement": "Apto 42B",
+            "neighborhood": "Bela Vista",
+            "number": "1000",
+            "state": "SP",
+            "street": "Avenida Paulista",
+            "zip_code": "01310-100"
+          },
+          "status": "pending",
+          "total_amount": 99.8,
+          "updated_at": "2026-11-16T08:00:00Z"
+        }
+      },
+      "OrderItemDetailDTO": {
+        "properties": {
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id",
+            "description": "ID do cosmético comprado.",
+            "examples": [
+              1
+            ]
+          },
+          "product_name": {
+            "type": "string",
+            "title": "Product Name",
+            "description": "Nome do produto no momento da compra.",
+            "examples": [
+              "Batom Matte Velvet Red"
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity",
+            "description": "Quantidade adquirida.",
+            "examples": [
+              2
+            ]
+          },
+          "unit_price": {
+            "type": "string",
+            "title": "Unit Price",
+            "description": "Preço unitário congelado na data do pedido.",
+            "examples": [
+              49.9
+            ]
+          },
+          "subtotal": {
+            "type": "string",
+            "title": "Subtotal",
+            "description": "Subtotal do item (unit_price * quantity).",
+            "examples": [
+              99.8
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "product_name",
+          "quantity",
+          "unit_price",
+          "subtotal"
+        ],
+        "title": "OrderItemDetailDTO"
+      },
+      "PaginatedProductsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProductResponse"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Lista de cosméticos correspondentes aos filtros aplicados."
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Total absoluto de produtos encontrados.",
+            "examples": [
+              120
+            ]
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page",
+            "description": "Página atual da listagem.",
+            "examples": [
+              1
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "Limite de itens por página.",
+            "examples": [
+              20
+            ]
+          },
+          "total_pages": {
+            "type": "integer",
+            "title": "Total Pages",
+            "description": "Total de páginas calculadas.",
+            "examples": [
+              6
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit",
+          "total_pages"
+        ],
+        "title": "PaginatedProductsResponse",
+        "example": {
+          "items": [],
+          "limit": 20,
+          "page": 1,
+          "total": 120,
+          "total_pages": 6
+        }
+      },
+      "ProductCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 2,
+            "title": "Name",
+            "description": "Nome do produto.",
+            "examples": [
+              "Sérum Facial Antioxidante Vitamina C"
+            ]
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 280
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "Slug único amigável para URLs. Se omitido, é gerado a partir do nome.",
+            "examples": [
+              "serum-facial-vitamina-c"
+            ]
+          },
+          "brand": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Brand",
+            "description": "Nome da marca.",
+            "default": "Aura Cosméticos",
+            "examples": [
+              "Aura Derm"
+            ]
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id",
+            "description": "ID da categoria associada.",
+            "examples": [
+              2
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Texto descritivo de benefícios e aplicação.",
+            "examples": [
+              "Sérum concentrado com 15% de Vitamina C pura e Ácido Ferúlico."
+            ]
+          },
+          "ingredients": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingredients",
+            "description": "Fórmula e lista de ingredientes INCI.",
+            "examples": [
+              "Ascorbic Acid 15%, Ferulic Acid 0.5%, Hyaluronic Acid."
+            ]
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Price",
+            "description": "Preço de venda em Reais (BRL).",
+            "examples": [
+              89.9
+            ]
+          },
+          "stock_quantity": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Stock Quantity",
+            "description": "Quantidade inicial para estoque no banco e trava Redis.",
+            "default": 0,
+            "examples": [
+              100
+            ]
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "Se o produto estará imediatamente visível na vitrine.",
+            "default": true,
+            "examples": [
+              true
+            ]
+          },
+          "image_urls": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Image Urls",
+            "description": "Lista de URLs das fotos do produto.",
+            "default": [],
+            "examples": [
+              [
+                "https://images.unsplash.com/photo-1620916566398-39f1143ab7be"
+              ]
+            ]
+          },
+          "images": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Images",
+            "description": "Lista de objetos de imagem."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "price"
+        ],
+        "title": "ProductCreateRequest"
+      },
+      "ProductImageDTO": {
+        "properties": {
+          "image_id": {
+            "type": "integer",
+            "title": "Image Id",
+            "description": "Identificador único da imagem no banco de dados.",
+            "examples": [
+              10
+            ]
+          },
+          "image_url": {
+            "type": "string",
+            "title": "Image Url",
+            "description": "URL pública ou CDN da foto do cosmético.",
+            "examples": [
+              "https://images.unsplash.com/photo-1586495777744-4413f21062fa"
+            ]
+          },
+          "is_primary": {
+            "type": "boolean",
+            "title": "Is Primary",
+            "description": "Indica se é a foto principal exibida no card do catálogo.",
+            "examples": [
+              true
+            ]
+          },
+          "display_order": {
+            "type": "integer",
+            "title": "Display Order",
+            "description": "Ordem de exibição na galeria da PDP.",
+            "examples": [
+              1
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "image_id",
+          "image_url",
+          "is_primary",
+          "display_order"
+        ],
+        "title": "ProductImageDTO"
+      },
+      "ProductResponse": {
+        "properties": {
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id",
+            "description": "ID único do cosmético.",
+            "examples": [
+              1
+            ]
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id",
+            "description": "ID da categoria a que pertence.",
+            "examples": [
+              1
+            ]
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Nome comercial do cosmético.",
+            "examples": [
+              "Batom Matte Velvet Red"
+            ]
+          },
+          "slug": {
+            "type": "string",
+            "title": "Slug",
+            "description": "Slug amigável para SEO e rota na loja.",
+            "examples": [
+              "batom-matte-velvet-red"
+            ]
+          },
+          "brand": {
+            "type": "string",
+            "title": "Brand",
+            "description": "Marca ou fabricante parceiro do cosmético.",
+            "examples": [
+              "Aura Glow"
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Descrição detalhada dos benefícios, acabamento e textura.",
+            "examples": [
+              "Batom líquido de longa duração com acabamento aveludado e alta pigmentação."
+            ]
+          },
+          "ingredients": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingredients",
+            "description": "Composição dermatológica completa (INCI) e modo de uso.",
+            "examples": [
+              "Aqua, Dimethicone, Isododecane, Tocopherol (Vitamina E), Ácido Hialurônico."
+            ]
+          },
+          "price": {
+            "type": "string",
+            "title": "Price",
+            "description": "Preço de venda unitário em Reais (BRL).",
+            "examples": [
+              49.9
+            ]
+          },
+          "stock_quantity": {
+            "type": "integer",
+            "title": "Stock Quantity",
+            "description": "Saldo físico disponível em estoque.",
+            "examples": [
+              45
+            ]
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "description": "Disponibilidade para exibição e compra no e-commerce.",
+            "examples": [
+              true
+            ]
+          },
+          "images": {
+            "items": {
+              "$ref": "#/components/schemas/ProductImageDTO"
+            },
+            "type": "array",
+            "title": "Images",
+            "description": "Galeria de imagens do cosmético.",
+            "default": []
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Data e hora de cadastro."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Data e hora da última modificação."
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "name",
+          "slug",
+          "brand",
+          "price",
+          "stock_quantity",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProductResponse",
+        "example": {
+          "brand": "Aura Glow",
+          "category_id": 1,
+          "created_at": "2026-11-16T08:00:00Z",
+          "description": "Batom líquido de alta pigmentação com acabamento aveludado sem craquelar.",
+          "images": [
+            {
+              "display_order": 1,
+              "image_id": 1,
+              "image_url": "https://images.unsplash.com/photo-1586495777744-4413f21062fa",
+              "is_primary": true
+            }
+          ],
+          "ingredients": "Dimethicone, Isododecane, Tocopherol (Vitamina E), Ácido Hialurônico.",
+          "is_active": true,
+          "name": "Batom Matte Velvet Red",
+          "price": 49.9,
+          "product_id": 1,
+          "slug": "batom-matte-velvet-red",
+          "stock_quantity": 45,
+          "updated_at": "2026-11-16T08:00:00Z"
+        }
+      },
+      "ProductUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 255,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Novo nome do cosmético."
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 280,
+                "minLength": 2
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug",
+            "description": "Novo slug do produto."
+          },
+          "brand": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand",
+            "description": "Nova marca."
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id",
+            "description": "Novo ID de categoria."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Nova descrição detalhada."
+          },
+          "ingredients": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingredients",
+            "description": "Nova fórmula dermatológica."
+          },
+          "price": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price",
+            "description": "Novo preço unitário em BRL."
+          },
+          "stock_quantity": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock Quantity",
+            "description": "Novo saldo em estoque físico."
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active",
+            "description": "Ativar ou desativar o produto no catálogo."
+          }
+        },
+        "type": "object",
+        "title": "ProductUpdateRequest"
+      },
+      "RegisterClientRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Name",
+            "description": "Nome completo da cliente ou revendedora de cosméticos.",
+            "examples": [
+              "Ana Beatriz Silva"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "Endereço de e-mail válido para autenticação e notificações de pedidos.",
+            "examples": [
+              "ana.beatriz@exemplo.com.br"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 6,
+            "title": "Password",
+            "description": "Senha segura com no mínimo 6 caracteres.",
+            "examples": [
+              "AuraCosmeticos#2026"
+            ]
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone",
+            "description": "Número de WhatsApp/telefone para contato e atualizações de entrega (com DDD).",
+            "examples": [
+              "11987654321"
+            ]
+          },
+          "lgpd_consent": {
+            "type": "boolean",
+            "title": "Lgpd Consent",
+            "description": "Consentimento explícito em conformidade com a LGPD (Lei Geral de Proteção de Dados).",
+            "default": true,
+            "examples": [
+              true
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "password"
+        ],
+        "title": "RegisterClientRequest",
+        "example": {
+          "email": "ana.beatriz@exemplo.com.br",
+          "lgpd_consent": true,
+          "name": "Ana Beatriz Silva",
+          "password": "SenhaSegura#2026",
+          "phone": "11987654321"
+        }
+      },
+      "SalesMetricsDTO": {
+        "properties": {
+          "daily_revenue": {
+            "type": "string",
+            "title": "Daily Revenue",
+            "description": "Faturamento consolidado das últimas 24 horas em BRL.",
+            "examples": [
+              14850.5
+            ]
+          },
+          "total_orders_today": {
+            "type": "integer",
+            "title": "Total Orders Today",
+            "description": "Contagem total de pedidos aprovados hoje.",
+            "examples": [
+              142
+            ]
+          },
+          "conversion_rate": {
+            "type": "number",
+            "title": "Conversion Rate",
+            "description": "Taxa de conversão de checkout (pedidos pagos / iniciados).",
+            "examples": [
+              4.85
+            ]
+          },
+          "critical_stock_count": {
+            "type": "integer",
+            "title": "Critical Stock Count",
+            "description": "Quantidade de cosméticos com estoque crítico (<= 3 unidades).",
+            "examples": [
+              5
+            ]
+          },
+          "total_revenue": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Revenue",
+            "description": "Alias para daily_revenue."
+          },
+          "total_orders": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Orders",
+            "description": "Alias para total_orders_today."
+          },
+          "average_ticket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Ticket",
+            "description": "Ticket médio calculado em BRL."
+          }
+        },
+        "type": "object",
+        "required": [
+          "daily_revenue",
+          "total_orders_today",
+          "conversion_rate",
+          "critical_stock_count"
+        ],
+        "title": "SalesMetricsDTO",
+        "example": {
+          "conversion_rate": 4.85,
+          "critical_stock_count": 5,
+          "daily_revenue": 14850.5,
+          "total_orders_today": 142
+        }
+      },
+      "ShippingAddressDTO": {
+        "properties": {
+          "street": {
+            "type": "string",
+            "minLength": 2,
+            "title": "Street",
+            "description": "Logradouro / Rua / Avenida.",
+            "examples": [
+              "Avenida Paulista"
+            ]
+          },
+          "number": {
+            "type": "string",
+            "title": "Number",
+            "description": "Número predial ou residencial.",
+            "examples": [
+              "1000"
+            ]
+          },
+          "complement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Complement",
+            "description": "Complemento (Apto, Bloco, Sala).",
+            "examples": [
+              "Apto 42B"
+            ]
+          },
+          "neighborhood": {
+            "type": "string",
+            "title": "Neighborhood",
+            "description": "Bairro.",
+            "examples": [
+              "Bela Vista"
+            ]
+          },
+          "city": {
+            "type": "string",
+            "title": "City",
+            "description": "Cidade.",
+            "examples": [
+              "São Paulo"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "maxLength": 2,
+            "minLength": 2,
+            "title": "State",
+            "description": "Sigla da Unidade Federativa (UF).",
+            "examples": [
+              "SP"
+            ]
+          },
+          "zip_code": {
+            "type": "string",
+            "maxLength": 9,
+            "minLength": 8,
+            "title": "Zip Code",
+            "description": "Código de Endereçamento Postal (CEP).",
+            "examples": [
+              "01310-100"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "street",
+          "number",
+          "neighborhood",
+          "city",
+          "state",
+          "zip_code"
+        ],
+        "title": "ShippingAddressDTO",
+        "example": {
+          "city": "São Paulo",
+          "complement": "Apto 42B",
+          "neighborhood": "Bela Vista",
+          "number": "1000",
+          "state": "SP",
+          "street": "Avenida Paulista",
+          "zip_code": "01310-100"
+        }
+      },
+      "StockReservationItemDTO": {
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "title": "Order Id",
+            "description": "UUID do pedido que detém a reserva no Redis.",
+            "examples": [
+              "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+            ]
+          },
+          "product_id": {
+            "type": "integer",
+            "title": "Product Id",
+            "description": "ID do produto reservado.",
+            "examples": [
+              1
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "title": "Quantity",
+            "description": "Quantidade de unidades bloqueadas temporariamente.",
+            "examples": [
+              2
+            ]
+          },
+          "ttl_remaining": {
+            "type": "integer",
+            "title": "Ttl Remaining",
+            "description": "Tempo de vida restante da trava atômica em segundos (máx. 1800s).",
+            "examples": [
+              1432
+            ]
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key",
+            "description": "Chave completa do Redis para liberação manual.",
+            "examples": [
+              "stock:reserved:3fa85f64:1"
+            ]
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name",
+            "description": "Nome do produto reservado.",
+            "examples": [
+              "Batom Matte Velvet Red"
+            ]
+          },
+          "reserved_quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved Quantity",
+            "description": "Quantidade reservada para exibição.",
+            "examples": [
+              2
+            ]
+          },
+          "ttl_remaining_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Remaining Seconds",
+            "description": "TTL restante em segundos.",
+            "examples": [
+              1432
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "order_id",
+          "product_id",
+          "quantity",
+          "ttl_remaining"
+        ],
+        "title": "StockReservationItemDTO"
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "JSON Web Token (JWT) assinado com HMAC-SHA256 para autenticação nas rotas protegidas.",
+            "examples": [
+              "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+            ]
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "description": "Tipo do token para uso no header Authorization (sempre 'bearer').",
+            "default": "bearer",
+            "examples": [
+              "bearer"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "Papel do usuário no sistema ('client' para clientes ou 'Admin'/'SuperAdmin' para gestores).",
+            "examples": [
+              "client"
+            ]
+          },
+          "user_id": {
+            "type": "integer",
+            "title": "User Id",
+            "description": "Identificador numérico único do usuário no banco de dados.",
+            "examples": [
+              1
+            ]
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Nome cadastrado do usuário.",
+            "examples": [
+              "Ana Beatriz Silva"
+            ]
+          },
+          "user": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User",
+            "description": "Dados resumidos do perfil do usuário para frontend.",
+            "examples": [
+              {
+                "id": 1,
+                "name": "Ana Beatriz Silva",
+                "role": "client"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "role",
+          "user_id",
+          "name"
+        ],
+        "title": "TokenResponse",
+        "example": {
+          "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwicm9sZSI6ImNsaWVudCIsImV4cCI6MTc5NDU2MDAwMH0.signature",
+          "name": "Ana Beatriz Silva",
+          "role": "client",
+          "token_type": "bearer",
+          "user_id": 1
+        }
+      },
+      "UpdateCartItemRequest": {
+        "properties": {
+          "quantity": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Quantity",
+            "description": "Nova quantidade desejada para o item no carrinho.",
+            "examples": [
+              3
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "quantity"
+        ],
+        "title": "UpdateCartItemRequest",
+        "example": {
+          "quantity": 3
+        }
+      },
+      "UpdateOrderStatusRequest": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Novo status logístico do pedido ('paid', 'preparing', 'shipped', 'delivered', 'cancelled').",
+            "examples": [
+              "shipped"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "UpdateOrderStatusRequest",
+        "example": {
+          "status": "shipped"
+        }
+      },
+      "UserProfileResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id",
+            "description": "ID da cliente.",
+            "examples": [
+              1
+            ]
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Nome da cliente.",
+            "examples": [
+              "Ana Beatriz Silva"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "E-mail da cliente.",
+            "examples": [
+              "ana.beatriz@exemplo.com.br"
+            ]
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phone",
+            "description": "Telefone / WhatsApp.",
+            "examples": [
+              "11987654321"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "Papel da conta.",
+            "default": "client",
+            "examples": [
+              "client"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "email"
+        ],
+        "title": "UserProfileResponse",
+        "example": {
+          "email": "ana.beatriz@exemplo.com.br",
+          "id": 1,
+          "name": "Ana Beatriz Silva",
+          "phone": "11987654321",
+          "role": "client"
+        }
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Insira o token JWT no formato: `Bearer <token>` para autenticar requisições protegidas."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Verificação de disponibilidade, conectividade e prontidão dos serviços essenciais da API."
+    },
+    {
+      "name": "Auth",
+      "description": "Autenticação e cadastro de clientes e revendedoras com suporte a LGPD e tokens Bearer JWT."
+    },
+    {
+      "name": "Catalog",
+      "description": "Navegação e busca de produtos de beleza com tolerância a erros e acentos via pg_trgm (PostgreSQL)."
+    },
+    {
+      "name": "Cart",
+      "description": "Gerenciamento de carrinho de compras baseado em sessão efêmera e volátil no Redis."
+    },
+    {
+      "name": "Checkout",
+      "description": "Finalização de pedidos, reserva atômica de estoque (Redis Lua) e emissão de pagamentos."
+    },
+    {
+      "name": "Orders",
+      "description": "Consulta do histórico e acompanhamento de pedidos em tempo real (Order Stepper)."
+    },
+    {
+      "name": "Webhooks",
+      "description": "Recepção de notificações assíncronas de gateways de pagamento (Pix / Stripe)."
+    },
+    {
+      "name": "Support",
+      "description": "Redirecionamento para atendimento e suporte ao cliente via WhatsApp oficial."
+    },
+    {
+      "name": "Admin Auth",
+      "description": "Autenticação restrita e controle de acesso baseado em papéis (RBAC) para gestores."
+    },
+    {
+      "name": "Admin Products",
+      "description": "Gestão operacional do catálogo de cosméticos (CRUD, fotos e controle de estoque)."
+    },
+    {
+      "name": "Admin Orders",
+      "description": "Operação e avanço no ciclo de vida de pedidos e expedição logística."
+    },
+    {
+      "name": "Admin Reports",
+      "description": "Inteligência analítica de vendas, faturamento diário, ticket médio e séries temporais."
+    },
+    {
+      "name": "Admin Inventory",
+      "description": "Auditoria em tempo real de travas atômicas e reservas temporárias no Redis."
+    }
+  ]
+}

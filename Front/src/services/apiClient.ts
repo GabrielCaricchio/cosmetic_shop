@@ -15,6 +15,7 @@ apiClient.interceptors.request.use((config) => {
 
   const guestCartId = localStorage.getItem('guest_cart_id');
   if (guestCartId) {
+    config.headers['X-Cart-ID'] = guestCartId;
     config.headers['X-Guest-Cart-Id'] = guestCartId;
   }
 
@@ -22,10 +23,18 @@ apiClient.interceptors.request.use((config) => {
 });
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const returnedCartId = response.headers['x-cart-id'];
+    if (returnedCartId && !localStorage.getItem('guest_cart_id')) {
+      localStorage.setItem('guest_cart_id', returnedCartId);
+    }
+    return response;
+  },
   (error) => {
-    if (error.response?.status === 401) {
-      // Clear token on unauthorized if needed
+    if (error.response?.data) {
+      if (error.response.data.message && !error.response.data.detail) {
+        error.response.data.detail = error.response.data.message;
+      }
     }
     return Promise.reject(error);
   }

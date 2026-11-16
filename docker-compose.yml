@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,7 +7,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgrespassword
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +20,7 @@ services:
     image: redis:7-alpine
     container_name: cosmetics_redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -42,7 +40,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: dev_cosmetic_shop_super_secret_jwt_key_2026
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,7 +53,7 @@ services:
       dockerfile: Dockerfile
     container_name: cosmetics_frontend
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       - backend
 

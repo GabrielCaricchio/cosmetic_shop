@@ -29,11 +29,20 @@ class AuthService:
         saved = await self.client_repo.create(client)
 
         token = create_access_token({"sub": str(saved.client_id), "role": "client", "name": saved.name})
+        user_info = {
+            "id": saved.client_id,
+            "user_id": saved.client_id,
+            "name": saved.name,
+            "email": saved.email,
+            "phone": saved.phone,
+            "role": "client"
+        }
         return TokenResponse(
             access_token=token,
             role="client",
             user_id=saved.client_id,
-            name=saved.name
+            name=saved.name,
+            user=user_info
         )
 
     async def login_client(self, req: LoginRequest) -> TokenResponse:
@@ -42,11 +51,20 @@ class AuthService:
             raise UnauthorizedException("Credenciais inválidas")
 
         token = create_access_token({"sub": str(client.client_id), "role": "client", "name": client.name})
+        user_info = {
+            "id": client.client_id,
+            "user_id": client.client_id,
+            "name": client.name,
+            "email": client.email,
+            "phone": client.phone,
+            "role": "client"
+        }
         return TokenResponse(
             access_token=token,
             role="client",
             user_id=client.client_id,
-            name=client.name
+            name=client.name,
+            user=user_info
         )
 
     async def login_admin(self, req: AdminLoginRequest) -> TokenResponse:
@@ -55,9 +73,17 @@ class AuthService:
             raise UnauthorizedException("Credenciais administrativas inválidas")
 
         token = create_access_token({"sub": str(admin.admin_id), "role": admin.role, "name": admin.name})
+        user_info = {
+            "id": admin.admin_id,
+            "user_id": admin.admin_id,
+            "name": admin.name,
+            "email": admin.email,
+            "role": admin.role
+        }
         return TokenResponse(
             access_token=token,
             role=admin.role,
             user_id=admin.admin_id,
-            name=admin.name
+            name=admin.name,
+            user=user_info
         )

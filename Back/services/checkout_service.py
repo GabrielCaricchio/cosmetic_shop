@@ -7,13 +7,16 @@ import redis.asyncio as aioredis
 from Back.repositories.order_repo import OrderRepository
 from Back.repositories.product_repo import ProductRepository
 from Back.repositories.payment_repo import PaymentRepository
+from Back.repositories.client_repo import ClientRepository
 from Back.services.stock_lock_service import StockLockService
 from Back.services.payment_service import PaymentService
+from Back.models.client_model import Client
 from Back.models.order_model import Order, OrderStatusEnum
 from Back.models.order_item_model import OrderItem
 from Back.models.payment_model import Payment, PaymentMethodEnum
 from Back.dtos.checkout_dto import CheckoutRequestDTO, CheckoutResponseDTO
-from Back.core.exceptions import OutOfStockException, NotFoundException, ConflictException
+from Back.core.security import hash_password
+from Back.core.exceptions import OutOfStockException, NotFoundException, ConflictException, UnauthorizedException
 
 IDEMPOTENCY_TTL = 24 * 3600  # 24 hours
 
@@ -43,9 +46,34 @@ class CheckoutService:
             return json.loads(cached)
         return None
 
+    async def resolve_or_create_client(
+        self,
+        current_client_id: Optional[int],
+        customer_data: Optional[Any]
+    ) -> int:
+        if current_client_id:
+            return current_client_id
+        if not customer_data:
+            raise UnauthorizedException("Autenticação necessária ou dados do comprador (customer) obrigatórios para checkout.")
+
+        client_repo = ClientRepository(self.db)
+        existing = await client_repo.get_by_email(customer_data.email)
+        if existing:
+            return existing.client_id
+
+        new_client = Client(
+            name=customer_data.name.strip(),
+            email=customer_data.email.lower().strip(),
+            password_hash=hash_password(uuid.uuid4().hex[:12]),
+            phone=customer_data.phone.strip() if customer_data.phone else None,
+            lgpd_consent=customer_data.lgpd_consent
+        )
+        saved = await client_repo.create(new_client)
+        return saved.client_id
+
     async def process_checkout(
         self,
-        client_id: int,
+        client_id: Optional[int],
         request: CheckoutRequestDTO,
         idempotency_key: str
     ) -> CheckoutResponseDTO:
@@ -53,6 +81,8 @@ class CheckoutService:
         cached_result = await self.check_idempotency(idempotency_key)
         if cached_result:
             return CheckoutResponseDTO(**cached_result)
+
+        resolved_client_id = await self.resolve_or_create_client(client_id, request.customer)
 
         order_id = uuid.uuid4()
         order_id_str = str(order_id)
@@ -98,7 +128,7 @@ class CheckoutService:
             # 3. Create Order in Database
             order = Order(
                 order_id=order_id,
-                client_id=client_id,
+                client_id=resolved_client_id,
                 total_amount=total_amount,
                 status=OrderStatusEnum.PENDING,
                 shipping_address=request.shipping_address.model_dump(),
