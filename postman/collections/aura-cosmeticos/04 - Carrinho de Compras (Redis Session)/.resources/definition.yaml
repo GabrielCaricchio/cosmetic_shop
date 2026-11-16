@@ -1,0 +1,3 @@
+$kind: collection
+description: Gerenciamento de carrinho de compras volátil no Redis identificado por cabeçalho X-Cart-ID.
+order: 4000

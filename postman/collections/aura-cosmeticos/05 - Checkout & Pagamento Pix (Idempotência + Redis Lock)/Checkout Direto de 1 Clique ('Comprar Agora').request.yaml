@@ -1,0 +1,39 @@
+$kind: http-request
+url: "{{baseUrl}}/api/checkout/direct"
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{client_token}}
+body:
+  type: json
+  content: |-
+    {
+      "product_id": 2,
+      "quantity": 1,
+      "customer_name": "Camila Albuquerque",
+      "customer_email": "{{user_email}}",
+      "customer_cpf": "123.456.789-00",
+      "customer_phone": "11987654321",
+      "shipping_address": {
+        "street": "Rua Oscar Freire",
+        "number": "500",
+        "city": "S\u00e3o Paulo",
+        "state": "SP",
+        "zip_code": "01426-001"
+      },
+      "payment_method": "pix"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 202 Accepted", function () {
+          pm.response.to.have.status(202);
+      });
+
+      pm.test("Pedido direto criado em milissegundos", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("order_id");
+          pm.expect(json.status).to.eql("pending");
+      });
+    language: text/javascript
+order: 3000

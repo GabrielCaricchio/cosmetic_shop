@@ -1,0 +1,23 @@
+$kind: http-request
+url: "{{baseUrl}}/api/register"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Cliente Sem LGPD",
+      "email": "sem.lgpd@auracosmeticos.com.br",
+      "password": "SenhaSegura123!",
+      "phone": "11987654321",
+      "lgpd_consent": false
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 400 ou 422 para consentimento LGPD falso", function () {
+          pm.expect([400, 422]).to.include(pm.response.code);
+      });
+    language: text/javascript
+order: 2000

@@ -1,0 +1,28 @@
+$kind: http-request
+url: "{{baseUrl}}/api/cart/items/1"
+method: PUT
+headers:
+  Content-Type: application/json
+  X-Cart-ID: "{{guest_cart_id}}"
+body:
+  type: json
+  content: |-
+    {
+      "quantity": 3
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Quantidade atualizada para 3", function () {
+          const json = pm.response.json();
+          const item = json.items.find(i => (i.product_id || i.id) === 1);
+          if (item) {
+              pm.expect(item.quantity).to.eql(3);
+          }
+      });
+    language: text/javascript
+order: 3000

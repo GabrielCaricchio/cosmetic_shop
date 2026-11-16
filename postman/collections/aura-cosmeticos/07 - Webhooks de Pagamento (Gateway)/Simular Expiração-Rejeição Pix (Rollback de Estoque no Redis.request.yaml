@@ -1,0 +1,23 @@
+$kind: http-request
+name: Simular Expiração/Rejeição Pix (Rollback de Estoque no Redis)
+url: "{{baseUrl}}/api/webhooks/payment"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "event": "payment.expired",
+      "order_id": "{{order_id}}",
+      "amount": 49.9,
+      "payment_method": "pix"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+    language: text/javascript
+order: 2000

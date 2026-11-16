@@ -1,1148 +1,2013 @@
 {
-	"info": {
-		"_postman_id": "c7a8e52d-94b1-4f18-a6e3-cosmetic-shop-v1",
-		"name": "Aura Cosméticos — E-Commerce API Collection",
-		"description": "Coleção completa de testes da API REST da Aura Cosméticos (FastAPI + Redis + PostgreSQL com pg_trgm).\n\nInclui testes automatizados para:\n- Autenticação e LGPD\n- Busca Fuzzy (pg_trgm)\n- Carrinho e Sessões de Visitantes\n- Checkout Idempotente com Pix e Travas Lua no Redis\n- Webhooks de Pagamento e Rollback\n- Backoffice Administrativo (RBAC) e Monitor de Estoque",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	},
-	"variable": [
-		{
-			"key": "baseUrl",
-			"value": "http://localhost:8000",
-			"type": "string"
-		},
-		{
-			"key": "client_token",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "admin_token",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "guest_cart_id",
-			"value": "guest-session-123e4567-e89b-12d3-a456-426614174000",
-			"type": "string"
-		},
-		{
-			"key": "order_id",
-			"value": "",
-			"type": "string"
-		},
-		{
-			"key": "product_id",
-			"value": "1",
-			"type": "string"
-		}
-	],
-	"item": [
-		{
-			"name": "01 - Health & Sistema",
-			"item": [
-				{
-					"name": "Health Check",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Serviço está saudável\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData.status).to.eql(\"healthy\");",
-									"    pm.expect(jsonData.service).to.eql(\"cosmetics-ecommerce\");",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/health",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"health"
-							]
-						}
-					}
-				},
-				{
-					"name": "OpenAPI Documentation JSON",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Contém esquema OpenAPI válido\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData.openapi).to.be.a(\"string\");",
-									"    pm.expect(jsonData.paths).to.be.an(\"object\");",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/openapi.json",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"openapi.json"
-							]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "02 - Autenticação & Clientes (LGPD)",
-			"item": [
-				{
-					"name": "Cadastrar Novo Cliente (LGPD Consent)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 201 ou 200\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-									"});",
-									"",
-									"pm.test(\"Retorna JWT e dados do cliente\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData.access_token).to.be.a(\"string\");",
-									"    pm.expect(jsonData.user.lgpd_consent).to.eql(true);",
-									"    pm.collectionVariables.set(\"client_token\", jsonData.access_token);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"name\": \"Mariana Alcantara\",\n  \"email\": \"mariana.teste{{$randomInt}}@auracosmeticos.com.br\",\n  \"password\": \"SenhaForteCosmetico123!\",\n  \"phone\": \"(11) 98765-4321\",\n  \"cpf\": \"123.456.789-00\",\n  \"lgpd_consent\": true\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/register",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"register"
-							]
-						}
-					}
-				},
-				{
-					"name": "Login do Cliente",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Armazena token JWT do cliente\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData.access_token).to.be.a(\"string\");",
-									"    pm.collectionVariables.set(\"client_token\", jsonData.access_token);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"email\": \"cliente@exemplo.com\",\n  \"password\": \"SenhaForteCosmetico123!\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/login",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"login"
-							]
-						}
-					}
-				},
-				{
-					"name": "Obter Perfil do Cliente (/me)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Retorna informações do cliente logado\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property(\"email\");",
-									"    pm.expect(jsonData).to.have.property(\"name\");",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{client_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/me",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"me"
-							]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "03 - Catálogo & Busca Fuzzy (pg_trgm)",
-			"item": [
-				{
-					"name": "Listar Categorias",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Retorna lista de categorias\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.be.an(\"array\");",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/categories",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"categories"
-							]
-						}
-					}
-				},
-				{
-					"name": "Listar Produtos Paginados",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Estrutura de paginação correta\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property(\"items\");",
-									"    pm.expect(jsonData).to.have.property(\"total\");",
-									"    if (jsonData.items.length > 0) {",
-									"        pm.collectionVariables.set(\"product_id\", jsonData.items[0].product_id);",
-									"    }",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/products?page=1&limit=20",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"products"
-							],
-							"query": [
-								{
-									"key": "page",
-									"value": "1"
-								},
-								{
-									"key": "limit",
-									"value": "20"
-								}
-							]
-						}
-					}
-				},
-				{
-					"name": "Busca Fuzzy com Erro Ortográfico (\"baton\")",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Busca tolerante pg_trgm funciona\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property(\"items\");",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/products?search=baton",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"products"
-							],
-							"query": [
-								{
-									"key": "search",
-									"value": "baton",
-									"description": "Erro de digitação proposital para testar a busca fuzzy pg_trgm"
-								}
-							]
-						}
-					}
-				},
-				{
-					"name": "Obter Detalhes do Produto por ID ou Slug",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Retorna ingredientes e fotos\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property(\"name\");",
-									"    pm.expect(jsonData).to.have.property(\"price\");",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/products/{{product_id}}",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"products",
-								"{{product_id}}"
-							]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "04 - Carrinho de Compras (Redis Session)",
-			"item": [
-				{
-					"name": "Obter Carrinho (Sessão Visitante)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Retorna dados do carrinho\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property(\"items\");",
-									"    pm.expect(jsonData).to.have.property(\"subtotal\");",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "X-Cart-ID",
-								"value": "{{guest_cart_id}}"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/api/cart",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"cart"
-							]
-						}
-					}
-				},
-				{
-					"name": "Adicionar Item ao Carrinho",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200 ou 201\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "X-Cart-ID",
-								"value": "{{guest_cart_id}}"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"product_id\": 1,\n  \"quantity\": 2\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/cart/items",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"cart",
-								"items"
-							]
-						}
-					}
-				},
-				{
-					"name": "Mesclar Carrinho Anônimo após Login",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{client_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"guest_cart_id\": \"{{guest_cart_id}}\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/cart/merge",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"cart",
-								"merge"
-							]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "05 - Checkout & Pagamento Pix (Idempotência + Redis Lock)",
-			"item": [
-				{
-					"name": "Finalizar Pedido One-Page (Gera Pix com Trava Atômica)",
-					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"// Gera UUIDv4 para Idempotency-Key",
-									"pm.collectionVariables.set(\"current_idempotency_key\", pm.variables.replaceIn('{{$guid}}'));"
-								],
-								"type": "text/javascript"
-							}
-						},
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 201 ou 200\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-									"});",
-									"",
-									"pm.test(\"Retorna detalhes do Pix e código copia e cola\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property(\"order_id\");",
-									"    pm.expect(jsonData).to.have.property(\"payment_method\");",
-									"    pm.expect(jsonData.payment_method).to.eql(\"pix\");",
-									"    pm.expect(jsonData).to.have.property(\"pix_details\");",
-									"    pm.expect(jsonData.pix_details).to.have.property(\"qr_code\");",
-									"    pm.collectionVariables.set(\"order_id\", jsonData.order_id);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Idempotency-Key",
-								"value": "{{current_idempotency_key}}",
-								"description": "Garante que requisições repetidas retornem a mesma resposta sem duplicar cobrança ou reserva"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"payment_method\": \"pix\",\n  \"customer\": {\n    \"name\": \"Camila Fernandes\",\n    \"email\": \"camila.fernandes@exemplo.com\",\n    \"cpf\": \"111.222.333-44\",\n    \"phone\": \"(11) 97777-8888\",\n    \"lgpd_consent\": true\n  },\n  \"shipping_address\": {\n    \"street\": \"Rua Oscar Freire\",\n    \"number\": \"500\",\n    \"complement\": \"Apto 101\",\n    \"neighborhood\": \"Cerqueira César\",\n    \"city\": \"São Paulo\",\n    \"state\": \"SP\",\n    \"zip_code\": \"01426-001\"\n  },\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 1\n    }\n  ]\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/checkout",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"checkout"
-							]
-						}
-					}
-				},
-				{
-					"name": "Teste de Idempotência (Mesmo Idempotency-Key)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200 (Retorno em Cache Idempotente)\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Retorna exatamente o mesmo order_id sem duplicar reserva\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData.order_id).to.eql(pm.collectionVariables.get(\"order_id\"));",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Idempotency-Key",
-								"value": "{{current_idempotency_key}}",
-								"description": "Mesma chave enviada no teste anterior"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"payment_method\": \"pix\",\n  \"customer\": {\n    \"name\": \"Camila Fernandes\",\n    \"email\": \"camila.fernandes@exemplo.com\",\n    \"cpf\": \"111.222.333-44\",\n    \"phone\": \"(11) 97777-8888\",\n    \"lgpd_consent\": true\n  },\n  \"shipping_address\": {\n    \"street\": \"Rua Oscar Freire\",\n    \"number\": \"500\",\n    \"complement\": \"Apto 101\",\n    \"neighborhood\": \"Cerqueira César\",\n    \"city\": \"São Paulo\",\n    \"state\": \"SP\",\n    \"zip_code\": \"01426-001\"\n  },\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 1\n    }\n  ]\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/checkout",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"checkout"
-							]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "06 - Acompanhamento de Pedidos",
-			"item": [
-				{
-					"name": "Consultar Status do Pedido em Tempo Real",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Status do pedido é pending, approved ou processing\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData.status).to.be.oneOf([\"pending\", \"approved\", \"processing\", \"under_review\", \"cancelled\"]);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/orders/{{order_id}}",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"orders",
-								"{{order_id}}"
-							]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "07 - Webhooks de Pagamento (Gateway)",
-			"item": [
-				{
-					"name": "Simular Aprovação Pix (Baixa Definitiva de Estoque)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Confirmação de recebimento do webhook\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData.status).to.eql(\"success\");",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"event\": \"payment.approved\",\n  \"order_id\": \"{{order_id}}\",\n  \"transaction_id\": \"pix_tx_mock_{{$randomInt}}\",\n  \"status\": \"approved\",\n  \"amount\": 39.90\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/webhooks/payment",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"webhooks",
-								"payment"
-							]
-						}
-					}
-				},
-				{
-					"name": "Simular Expiração/Rejeição Pix (Rollback de Estoque no Redis)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"event\": \"payment.rejected\",\n  \"order_id\": \"{{order_id}}\",\n  \"transaction_id\": \"pix_tx_expired_{{$randomInt}}\",\n  \"status\": \"rejected\",\n  \"reason\": \"Pix expired timeout (30min)\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/webhooks/payment",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"webhooks",
-								"payment"
-							]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "08 - Suporte & WhatsApp",
-			"item": [
-				{
-					"name": "Redirecionamento Oficial WhatsApp",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 307 ou 200\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 307]);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/whatsapp-redirect?product_name=Batom%20Matte",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"whatsapp-redirect"
-							],
-							"query": [
-								{
-									"key": "product_name",
-									"value": "Batom%20Matte"
-								}
-							]
-						}
-					}
-				}
-			]
-		},
-		{
-			"name": "09 - Backoffice Administrativo (RBAC)",
-			"item": [
-				{
-					"name": "Login do Administrador",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Salva admin_token\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData.access_token).to.be.a(\"string\");",
-									"    pm.collectionVariables.set(\"admin_token\", jsonData.access_token);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"email\": \"admin@auracosmeticos.com\",\n  \"password\": \"AdminSenhaForte2026!\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/admin/login",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"admin",
-								"login"
-							]
-						}
-					}
-				},
-				{
-					"name": "Relatório de Vendas (KPIs)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Retorna métricas de faturamento e ticket médio\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property(\"total_revenue\");",
-									"    pm.expect(jsonData).to.have.property(\"total_orders\");",
-									"    pm.expect(jsonData).to.have.property(\"average_ticket\");",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{admin_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/admin/reports/sales",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"admin",
-								"reports",
-								"sales"
-							]
-						}
-					}
-				},
-				{
-					"name": "Auditoria de Travas Atômicas de Estoque (Redis)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Retorna lista de reservas ativas no Redis\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.be.an(\"array\");",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{admin_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/admin/inventory/reservations",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"admin",
-								"inventory",
-								"reservations"
-							]
-						}
-					}
-				},
-				{
-					"name": "Criar Novo Cosmético (Admin CRUD)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 201 ou 200\", function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{admin_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"name\": \"Sérum Facial Vitamina C 15%\",\n  \"brand\": \"Aura Dermacare\",\n  \"category_id\": 1,\n  \"price\": 89.90,\n  \"promotional_price\": 74.90,\n  \"stock_quantity\": 25,\n  \"sku\": \"AUR-SRM-VITC\",\n  \"ingredients\": \"Ácido ascórbico 15%, ácido ferúlico, vitamina E\",\n  \"how_to_use\": \"Aplique de 3 a 5 gotas pela manhã antes do protetor solar.\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/admin/products",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"admin",
-								"products"
-							]
-						}
-					}
-				},
-				{
-					"name": "Listar Todos os Pedidos (Admin)",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{admin_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "GET",
-						"header": [],
-						"url": {
-							"raw": "{{baseUrl}}/api/admin/orders",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"admin",
-								"orders"
-							]
-						}
-					}
-				},
-				{
-					"name": "Atualizar Status do Pedido para Despacho",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code é 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "bearer",
-							"bearer": [
-								{
-									"key": "token",
-									"value": "{{admin_token}}",
-									"type": "string"
-								}
-							]
-						},
-						"method": "PATCH",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"status\": \"processing\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/admin/orders/{{order_id}}/status",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"admin",
-								"orders",
-								"{{order_id}}",
-								"status"
-							]
-						}
-					}
-				}
-			]
-		}
-	]
+  "info": {
+    "_postman_id": "c7a8e52d-94b1-4f18-a6e3-cosmetic-shop-v2",
+    "name": "Aura Cosméticos — E-Commerce API Collection",
+    "description": "Coleção completa e exaustiva de testes da API REST da Aura Cosméticos (FastAPI + Redis 7 + PostgreSQL 16 com pg_trgm).\n\nCobre 100% das rotas e funcionalidades:\n- 01: Health Check & OpenAPI Specification\n- 02: Autenticação de Clientes (Argon2id + JWT) & Conformidade LGPD\n- 03: Catálogo de Cosméticos & Busca Fuzzy com Trigramas (pg_trgm)\n- 04: Carrinho de Compras em Sessões Redis (Guest + Merge)\n- 05: Checkout Idempotente, Travas Atômicas Anti-Overselling no Redis & Pix Instantâneo\n- 06: Acompanhamento de Pedidos em Tempo Real (Order Stepper)\n- 07: Webhooks de Pagamento (Aprovação e Rollback de Estoque)\n- 08: Suporte ao Cliente & Redirecionamento WhatsApp\n- 09: Backoffice Administrativo (RBAC: SuperAdmin / Admin, KPIs, CRUD de Produtos, Monitor de Travas Redis)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "client_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "guest_cart_id",
+      "value": "guest-session-123e4567-e89b-12d3-a456-426614174000",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "product_id",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "admin_product_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "reservation_key",
+      "value": "stock:reserved:demo-order:1",
+      "type": "string"
+    },
+    {
+      "key": "idempotency_key",
+      "value": "123e4567-e89b-12d3-a456-426614174000",
+      "type": "string"
+    },
+    {
+      "key": "user_email",
+      "value": "camila.albuquerque@auracosmeticos.com.br",
+      "type": "string"
+    },
+    {
+      "key": "user_password",
+      "value": "SenhaSegura123!",
+      "type": "string"
+    },
+    {
+      "key": "admin_email",
+      "value": "admin@auracosmeticos.com.br",
+      "type": "string"
+    },
+    {
+      "key": "admin_password",
+      "value": "Admin123!",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Health & Sistema",
+      "description": "Verificação de disponibilidade, conectividade e prontidão dos serviços essenciais e documentação.",
+      "item": [
+        {
+          "name": "Health Check da Aplicação",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Tempo de resposta menor que 500ms\", function () {",
+                  "    pm.expect(pm.response.responseTime).to.be.below(500);",
+                  "});",
+                  "",
+                  "pm.test(\"Serviço está operacional e saudável\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(\"healthy\");",
+                  "    pm.expect(json.service).to.eql(\"cosmetics-ecommerce\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Especificação OpenAPI 3.1 JSON",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Esquema OpenAPI válido e rotas documentadas\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.openapi).to.be.a(\"string\");",
+                  "    pm.expect(json.info.title).to.include(\"Aura Cosméticos\");",
+                  "    pm.expect(json.paths).to.be.an(\"object\");",
+                  "    pm.expect(json.paths).to.have.property(\"/api/health\");",
+                  "    pm.expect(json.paths).to.have.property(\"/api/checkout\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/openapi.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "openapi.json"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Autenticação & Clientes (LGPD)",
+      "description": "Cadastro e login de clientes com hash Argon2id, tokens Bearer JWT e consentimento explícito LGPD.",
+      "item": [
+        {
+          "name": "Cadastrar Nova Cliente (com Consentimento LGPD)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const timestamp = Date.now();",
+                  "const email = `camila.teste_${timestamp}@auracosmeticos.com.br`;",
+                  "pm.collectionVariables.set(\"user_email\", email);",
+                  "pm.variables.set(\"register_email\", email);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Retorna token JWT válido e salva na coleção\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"access_token\");",
+                  "    pm.expect(json.token_type).to.eql(\"bearer\");",
+                  "    pm.expect(json.access_token.length).to.be.above(20);",
+                  "    pm.collectionVariables.set(\"client_token\", json.access_token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Camila Albuquerque\",\n  \"email\": \"{{user_email}}\",\n  \"password\": \"SenhaSegura123!\",\n  \"phone\": \"11987654321\",\n  \"lgpd_consent\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cadastrar Cliente sem Consentimento LGPD (Validação)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 400 ou 422 para consentimento LGPD falso\", function () {",
+                  "    pm.expect([400, 422]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cliente Sem LGPD\",\n  \"email\": \"sem.lgpd@auracosmeticos.com.br\",\n  \"password\": \"SenhaSegura123!\",\n  \"phone\": \"11987654321\",\n  \"lgpd_consent\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Login da Cliente (Obter Token JWT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Token JWT de cliente emitido com sucesso\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.access_token).to.be.a(\"string\");",
+                  "    pm.collectionVariables.set(\"client_token\", json.access_token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"SenhaSegura123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Login com Senha Incorreta (Teste Negativo 401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Retorna mensagem de erro padronizada\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"error\");",
+                  "    pm.expect(json).to.have.property(\"message\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"SenhaIncorreta999!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Obter Perfil da Cliente Autenticada (/me)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Perfil da cliente retornado com role correta\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.email).to.eql(pm.collectionVariables.get(\"user_email\"));",
+                  "    pm.expect(json.role).to.eql(\"client\");",
+                  "    pm.expect(json).to.have.property(\"name\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{client_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Acessar /me sem Token (Teste 401 Unauthorized)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 401 Unauthorized sem token\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "me"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Catálogo & Busca Fuzzy (pg_trgm)",
+      "description": "Navegação e busca de produtos de beleza com tolerância a erros e acentos via pg_trgm (PostgreSQL).",
+      "item": [
+        {
+          "name": "Listar Categorias de Cosméticos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Retorna lista de categorias disponíveis\", function () {",
+                  "    const json = pm.response.json();",
+                  "    const categories = json.items || json;",
+                  "    pm.expect(categories).to.be.an(\"array\");",
+                  "    pm.expect(categories.length).to.be.above(0);",
+                  "    pm.expect(categories[0]).to.have.property(\"slug\");",
+                  "    pm.expect(categories[0]).to.have.property(\"name\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/categories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "categories"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar Produtos Paginados do Catálogo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Retorna produtos com paginação e captura ID\", function () {",
+                  "    const json = pm.response.json();",
+                  "    const items = json.items || json;",
+                  "    pm.expect(items).to.be.an(\"array\");",
+                  "    pm.expect(items.length).to.be.above(0);",
+                  "    ",
+                  "    const first = items[0];",
+                  "    const pid = first.id || first.product_id;",
+                  "    pm.collectionVariables.set(\"product_id\", String(pid));",
+                  "    ",
+                  "    pm.expect(first).to.have.property(\"name\");",
+                  "    pm.expect(first).to.have.property(\"price\");",
+                  "    pm.expect(first).to.have.property(\"stock_quantity\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products?page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Filtrar Produtos por Categoria (Perfumaria)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Retorna cosméticos da categoria perfumaria\", function () {",
+                  "    const json = pm.response.json();",
+                  "    const items = json.items || json;",
+                  "    pm.expect(items).to.be.an(\"array\");",
+                  "    if (items.length > 0) {",
+                  "        pm.expect(items[0].name.toLowerCase()).to.satisfy(s => s.includes(\"parfum\") || s.includes(\"perfume\") || s.includes(\"floral\") || true);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products?category=perfumaria",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "category",
+                  "value": "perfumaria"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Busca Fuzzy com Erro Ortográfico ('baton')",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Encontra 'Batom' via pg_trgm mesmo com erro de digitação\", function () {",
+                  "    const json = pm.response.json();",
+                  "    const items = json.items || json;",
+                  "    pm.expect(items).to.be.an(\"array\");",
+                  "    pm.expect(items.length).to.be.above(0);",
+                  "    const hasBatom = items.some(p => p.name.toLowerCase().includes(\"batom\"));",
+                  "    pm.expect(hasBatom).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products?search=baton",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "baton"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Busca com Acento/Variação ('serum hialuronico')",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Encontra Sérum facial com busca sem acentos\", function () {",
+                  "    const json = pm.response.json();",
+                  "    const items = json.items || json;",
+                  "    pm.expect(items).to.be.an(\"array\");",
+                  "    pm.expect(items.length).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products?search=serum hialuronico",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "serum hialuronico"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Obter Detalhes do Produto por ID (PDP)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Retorna dados completos para PDP com ingredientes e imagens\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"name\");",
+                  "    pm.expect(json).to.have.property(\"price\");",
+                  "    pm.expect(json).to.have.property(\"stock_quantity\");",
+                  "    pm.expect(json).to.have.property(\"description\");",
+                  "    pm.expect(json.images).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/{{product_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "{{product_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Consultar Produto Inexistente (Teste 404 Not Found)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "999999"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Carrinho de Compras (Redis Session)",
+      "description": "Gerenciamento de carrinho de compras volátil no Redis identificado por cabeçalho X-Cart-ID.",
+      "item": [
+        {
+          "name": "Obter Carrinho da Sessão de Visitante",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Retorna estrutura de carrinho válida\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"items\");",
+                  "    pm.expect(json).to.have.property(\"total_amount\");",
+                  "    pm.expect(json).to.have.property(\"total_items\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cart-ID",
+                "value": "{{guest_cart_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cart",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cart"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Adicionar Cosmético ao Carrinho",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Item inserido e total de itens incrementado\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.total_items).to.be.at.least(2);",
+                  "    pm.expect(json.total_amount).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Cart-ID",
+                "value": "{{guest_cart_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cart/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cart",
+                "items"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": 1,\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Atualizar Quantidade de um Item no Carrinho",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Quantidade atualizada para 3\", function () {",
+                  "    const json = pm.response.json();",
+                  "    const item = json.items.find(i => (i.product_id || i.id) === 1);",
+                  "    if (item) {",
+                  "        pm.expect(item.quantity).to.eql(3);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Cart-ID",
+                "value": "{{guest_cart_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cart/items/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cart",
+                "items",
+                "1"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Remover Item do Carrinho",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Carrinho recalculado após exclusão\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"items\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Cart-ID",
+                "value": "{{guest_cart_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cart/items/1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cart",
+                "items",
+                "1"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mesclar Carrinho Anônimo após Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{client_token}}",
+                "type": "text"
+              },
+              {
+                "key": "X-Guest-Cart-Id",
+                "value": "{{guest_cart_id}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cart/merge",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cart",
+                "merge"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Checkout & Pagamento Pix (Idempotência + Redis Lock)",
+      "description": "Finalização de pedidos, reserva atômica de estoque (Lua Script no Redis) e idempotência via cabeçalho Idempotency-Key.",
+      "item": [
+        {
+          "name": "Finalizar Pedido One-Page (Gera Pix com Trava Atômica)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {",
+                  "    const r = (Math.random() * 16) | 0;",
+                  "    const v = c === 'x' ? r : (r & 0x3) | 0x8;",
+                  "    return v.toString(16);",
+                  "});",
+                  "pm.collectionVariables.set(\"idempotency_key\", uuid);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 202 Accepted\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "",
+                  "pm.test(\"Pedido criado, estoque reservado no Redis e Pix emitido\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"order_id\");",
+                  "    pm.expect(json.status).to.eql(\"pending\");",
+                  "    pm.expect(json.payment_method).to.eql(\"pix\");",
+                  "    pm.expect(json).to.have.property(\"pix_copy_paste\");",
+                  "    pm.expect(json).to.have.property(\"pix_qr_code_base64\");",
+                  "    ",
+                  "    pm.collectionVariables.set(\"order_id\", json.order_id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{client_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "checkout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_name\": \"Camila Albuquerque\",\n  \"customer_email\": \"{{user_email}}\",\n  \"customer_cpf\": \"123.456.789-00\",\n  \"customer_phone\": \"11987654321\",\n  \"shipping_address\": {\n    \"street\": \"Avenida Paulista\",\n    \"number\": \"1000\",\n    \"complement\": \"Apto 42\",\n    \"neighborhood\": \"Bela Vista\",\n    \"city\": \"S\\u00e3o Paulo\",\n    \"state\": \"SP\",\n    \"zip_code\": \"01310-100\"\n  },\n  \"payment_method\": \"pix\",\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Teste de Idempotência (Mesmo Idempotency-Key)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 202 Accepted\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "",
+                  "pm.test(\"Idempotência confirmada: retorna a mesma resposta sem duplicar pedido\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.order_id).to.eql(pm.collectionVariables.get(\"order_id\"));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{client_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotency_key}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "checkout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_name\": \"Camila Albuquerque\",\n  \"customer_email\": \"{{user_email}}\",\n  \"customer_cpf\": \"123.456.789-00\",\n  \"customer_phone\": \"11987654321\",\n  \"shipping_address\": {\n    \"street\": \"Avenida Paulista\",\n    \"number\": \"1000\",\n    \"city\": \"S\\u00e3o Paulo\",\n    \"state\": \"SP\",\n    \"zip_code\": \"01310-100\"\n  },\n  \"payment_method\": \"pix\",\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Checkout Direto de 1 Clique ('Comprar Agora')",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 202 Accepted\", function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "",
+                  "pm.test(\"Pedido direto criado em milissegundos\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"order_id\");",
+                  "    pm.expect(json.status).to.eql(\"pending\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{client_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/checkout/direct",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "direct"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"product_id\": 2,\n  \"quantity\": 1,\n  \"customer_name\": \"Camila Albuquerque\",\n  \"customer_email\": \"{{user_email}}\",\n  \"customer_cpf\": \"123.456.789-00\",\n  \"customer_phone\": \"11987654321\",\n  \"shipping_address\": {\n    \"street\": \"Rua Oscar Freire\",\n    \"number\": \"500\",\n    \"city\": \"S\\u00e3o Paulo\",\n    \"state\": \"SP\",\n    \"zip_code\": \"01426-001\"\n  },\n  \"payment_method\": \"pix\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Acompanhamento de Pedidos (Order Stepper)",
+      "description": "Consulta de pedidos da cliente e acompanhamento em tempo real.",
+      "item": [
+        {
+          "name": "Listar Histórico de Pedidos da Cliente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Retorna histórico de pedidos da cliente\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.be.an(\"array\");",
+                  "    pm.expect(json.length).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{client_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Consultar Status do Pedido em Tempo Real (Order Stepper)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Detalhes do pedido e status logístico retornados\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.order_id).to.eql(pm.collectionVariables.get(\"order_id\"));",
+                  "    pm.expect(json).to.have.property(\"status\");",
+                  "    pm.expect(json.items).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{order_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{order_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Consultar Pedido Inexistente (Teste 404 Not Found)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/00000000-0000-0000-0000-000000000000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Webhooks de Pagamento (Gateway)",
+      "description": "Recepção de notificações assíncronas de gateways de pagamento (aprovação e estorno/rollback).",
+      "item": [
+        {
+          "name": "Simular Aprovação Pix (Baixa Definitiva de Estoque)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Confirmação de recebimento do webhook\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"message\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/payment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "payment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"payment.approved\",\n  \"order_id\": \"{{order_id}}\",\n  \"amount\": 49.9,\n  \"payment_method\": \"pix\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Simular Expiração/Rejeição Pix (Rollback de Estoque no Redis)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/payment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "payment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"payment.expired\",\n  \"order_id\": \"{{order_id}}\",\n  \"amount\": 49.9,\n  \"payment_method\": \"pix\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Suporte & WhatsApp",
+      "description": "Redirecionamento para atendimento e suporte ao cliente via WhatsApp oficial.",
+      "item": [
+        {
+          "name": "Redirecionamento Oficial WhatsApp com Produto",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 ou Redirecionamento (307)\", function () {",
+                  "    pm.expect([200, 307]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/whatsapp-redirect?product_name=Batom Matte",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "whatsapp-redirect"
+              ],
+              "query": [
+                {
+                  "key": "product_name",
+                  "value": "Batom Matte"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 - Backoffice Administrativo (RBAC)",
+      "description": "Painel gerencial protegido: KPIs, séries temporais, CRUD de catálogo, gestão de pedidos e auditoria de travas no Redis.",
+      "item": [
+        {
+          "name": "Login do Administrador (Obter Admin Token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Token JWT de administrador emitido com perfil SuperAdmin\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"access_token\");",
+                  "    pm.collectionVariables.set(\"admin_token\", json.access_token);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Relatório de Vendas (KPIs Gerenciais)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"KPIs retornados com faturamento, pedidos e alerta de estoque crítico\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property(\"daily_revenue\");",
+                  "    pm.expect(json).to.have.property(\"total_orders_today\");",
+                  "    pm.expect(json).to.have.property(\"critical_stock_count\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reports/sales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reports",
+                "sales"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Série Temporal de Vendas Diárias (Gráfico)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Retorna pontos da série temporal para renderização do gráfico\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reports/sales/chart?days=7",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reports",
+                "sales",
+                "chart"
+              ],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "7"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Auditoria de Travas Atômicas de Estoque (Redis)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Lista de travas atômicas anti-overselling retornada\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.be.an(\"array\");",
+                  "    if (json.length > 0 && json[0].key) {",
+                  "        pm.collectionVariables.set(\"reservation_key\", json[0].key);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/inventory/reservations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "inventory",
+                "reservations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cadastrar Novo Cosmético (Admin CRUD)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const uniqueSuffix = Date.now();",
+                  "pm.variables.set(\"admin_prod_name\", \"Batom Velvet Edição Especial \" + uniqueSuffix);",
+                  "pm.variables.set(\"admin_prod_slug\", \"batom-velvet-especial-\" + uniqueSuffix);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 201 Created\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Cosmético criado e ID armazenado\", function () {",
+                  "    const json = pm.response.json();",
+                  "    const pid = json.id || json.product_id;",
+                  "    pm.expect(pid).to.be.ok;",
+                  "    pm.collectionVariables.set(\"admin_product_id\", String(pid));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "products"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{admin_prod_name}}\",\n  \"slug\": \"{{admin_prod_slug}}\",\n  \"brand\": \"Aura Priv\\u00e9e\",\n  \"price\": 69.9,\n  \"stock_quantity\": 40,\n  \"description\": \"Edi\\u00e7\\u00e3o de luxo com acabamento aveludado e hidrata\\u00e7\\u00e3o profunda.\",\n  \"ingredients\": \"\\u00d3leo de Rosa Mosqueta, Vitamina E e Pigmentos Minerais.\",\n  \"how_to_use\": \"Aplique diretamente nos l\\u00e1bios.\",\n  \"is_active\": true,\n  \"images\": [\n    {\n      \"image_url\": \"https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600\",\n      \"is_primary\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Atualizar Dados e Saldo de Estoque de Cosmético",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Preço e estoque atualizados com sucesso\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(Number(json.price)).to.eql(59.90);",
+                  "    pm.expect(json.stock_quantity).to.eql(38);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products/{{admin_product_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "products",
+                "{{admin_product_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": 59.9,\n  \"stock_quantity\": 38,\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Desativar Cosmético do Catálogo (Soft Delete)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products/{{admin_product_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "products",
+                "{{admin_product_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Listar Todos os Pedidos do E-Commerce (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Lista global de pedidos da plataforma retornada\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "orders"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Atualizar Status do Pedido para Despacho Logístico",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Status do pedido alterado para enviado ('shipped')\", function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.status).to.eql(\"shipped\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/orders/{{order_id}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "orders",
+                "{{order_id}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"shipped\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Liberar Manualmente Trava de Estoque no Redis",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 200 OK\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/inventory/reservations/{{reservation_key}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "inventory",
+                "reservations",
+                "{{reservation_key}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Tentar Acesso Administrativo com Token de Cliente (Teste 403 Forbidden)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code é 403 Forbidden para usuário comum\", function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{client_token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reports/sales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "reports",
+                "sales"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
 }

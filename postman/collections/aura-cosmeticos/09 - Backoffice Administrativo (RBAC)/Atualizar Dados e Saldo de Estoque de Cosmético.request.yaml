@@ -1,0 +1,28 @@
+$kind: http-request
+url: "{{baseUrl}}/api/admin/products/{{admin_product_id}}"
+method: PUT
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{admin_token}}
+body:
+  type: json
+  content: |-
+    {
+      "price": 59.9,
+      "stock_quantity": 38,
+      "is_active": true
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Preço e estoque atualizados com sucesso", function () {
+          const json = pm.response.json();
+          pm.expect(Number(json.price)).to.eql(59.90);
+          pm.expect(json.stock_quantity).to.eql(38);
+      });
+    language: text/javascript
+order: 6000

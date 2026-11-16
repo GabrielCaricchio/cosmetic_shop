@@ -1,0 +1,14 @@
+$kind: http-request
+url: "{{baseUrl}}/api/cart/merge"
+method: POST
+headers:
+  Authorization: Bearer {{client_token}}
+  X-Guest-Cart-Id: "{{guest_cart_id}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+    language: text/javascript
+order: 5000

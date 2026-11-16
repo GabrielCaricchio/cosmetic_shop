@@ -1,0 +1,43 @@
+$kind: http-request
+url: "{{baseUrl}}/api/checkout"
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{client_token}}
+  Idempotency-Key: "{{idempotency_key}}"
+body:
+  type: json
+  content: |-
+    {
+      "customer_name": "Camila Albuquerque",
+      "customer_email": "{{user_email}}",
+      "customer_cpf": "123.456.789-00",
+      "customer_phone": "11987654321",
+      "shipping_address": {
+        "street": "Avenida Paulista",
+        "number": "1000",
+        "city": "S\u00e3o Paulo",
+        "state": "SP",
+        "zip_code": "01310-100"
+      },
+      "payment_method": "pix",
+      "items": [
+        {
+          "product_id": 1,
+          "quantity": 1
+        }
+      ]
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 202 Accepted", function () {
+          pm.response.to.have.status(202);
+      });
+
+      pm.test("Idempotência confirmada: retorna a mesma resposta sem duplicar pedido", function () {
+          const json = pm.response.json();
+          pm.expect(json.order_id).to.eql(pm.collectionVariables.get("order_id"));
+      });
+    language: text/javascript
+order: 2000

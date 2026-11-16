@@ -1,0 +1,67 @@
+name: Local
+values:
+  - key: baseUrl
+    value: "http://localhost:8000"
+    enabled: true
+    type: default
+    description: "URL base da API FastAPI local"
+  - key: client_token
+    value: ""
+    enabled: true
+    type: secret
+    description: "Token Bearer JWT da cliente autenticada"
+  - key: admin_token
+    value: ""
+    enabled: true
+    type: secret
+    description: "Token Bearer JWT do administrador (SuperAdmin)"
+  - key: guest_cart_id
+    value: "guest-session-123e4567-e89b-12d3-a456-426614174000"
+    enabled: true
+    type: default
+    description: "UUID da sessão anônima do carrinho no Redis"
+  - key: order_id
+    value: ""
+    enabled: true
+    type: default
+    description: "UUID do pedido gerado para testes do Order Stepper"
+  - key: product_id
+    value: "1"
+    enabled: true
+    type: default
+    description: "ID do cosmético selecionado para testes de carrinho e checkout"
+  - key: admin_product_id
+    value: ""
+    enabled: true
+    type: default
+    description: "ID do produto criado via CRUD administrativo"
+  - key: reservation_key
+    value: "stock:reserved:demo-order:1"
+    enabled: true
+    type: default
+    description: "Chave da trava atômica no Redis"
+  - key: idempotency_key
+    value: "123e4567-e89b-12d3-a456-426614174000"
+    enabled: true
+    type: default
+    description: "Chave UUID de idempotência para o checkout"
+  - key: user_email
+    value: "camila.albuquerque@auracosmeticos.com.br"
+    enabled: true
+    type: default
+    description: "E-mail de teste da cliente"
+  - key: user_password
+    value: "SenhaSegura123!"
+    enabled: true
+    type: secret
+    description: "Senha da cliente"
+  - key: admin_email
+    value: "admin@auracosmeticos.com.br"
+    enabled: true
+    type: default
+    description: "E-mail de acesso do administrador"
+  - key: admin_password
+    value: "Admin123!"
+    enabled: true
+    type: secret
+    description: "Senha do administrador padrão gerado no seed"

@@ -1,0 +1,26 @@
+$kind: http-request
+url: "{{baseUrl}}/api/admin/login"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "email": "{{admin_email}}",
+      "password": "{{admin_password}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Token JWT de administrador emitido com perfil SuperAdmin", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("access_token");
+          pm.collectionVariables.set("admin_token", json.access_token);
+      });
+    language: text/javascript
+order: 1000

@@ -25,9 +25,9 @@ export const CartItemRow: React.FC<CartItemRowProps> = ({
   };
 
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-neutral-100 last:border-b-0">
-      {/* Thumbnail */}
-      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-neutral-100 border border-neutral-200">
+    <div className="flex items-center gap-3.5 py-3.5 border-b border-warm-100 last:border-b-0">
+      {/* Thumbnail com acabamento arredondado */}
+      <div className="h-16 w-16 sm:h-18 sm:w-18 shrink-0 overflow-hidden rounded-2xl bg-warm-100/80 border border-warm-200/90 shadow-2xs">
         <img
           src={
             item.image_url ||
@@ -40,35 +40,35 @@ export const CartItemRow: React.FC<CartItemRowProps> = ({
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <h4 className="text-sm font-semibold text-neutral-900 truncate">{item.name}</h4>
-        <p className="text-xs text-neutral-500 mt-0.5">{formatPrice(effectivePrice)} un.</p>
+        <h4 className="text-xs sm:text-sm font-semibold text-warm-900 truncate">{item.name}</h4>
+        <p className="text-[11px] text-warm-500 mt-0.5 font-medium">{formatPrice(effectivePrice)} un.</p>
 
-        {/* Quantidade */}
-        <div className="flex items-center gap-2 mt-2">
-          <div className="flex items-center rounded-lg border border-neutral-200 bg-white">
+        {/* Quantidade & Subtotal */}
+        <div className="flex items-center justify-between gap-2 mt-2">
+          <div className="flex items-center rounded-xl border border-warm-200 bg-warm-50/80 shadow-2xs">
             <button
               type="button"
               onClick={() => onUpdateQuantity(itemId, item.quantity - 1)}
-              className="p-1 text-neutral-500 hover:text-neutral-800"
+              className="p-1.5 text-warm-500 hover:text-botanic-900 active:scale-90 transition-colors"
               aria-label="Diminuir"
             >
               <Minus className="h-3 w-3" />
             </button>
-            <span className="w-7 text-center text-xs font-semibold text-neutral-900">
+            <span className="w-6 text-center text-xs font-bold text-warm-900">
               {item.quantity}
             </span>
             <button
               type="button"
               onClick={() => onUpdateQuantity(itemId, item.quantity + 1)}
               disabled={item.stock_quantity !== undefined && item.quantity >= item.stock_quantity}
-              className="p-1 text-neutral-500 hover:text-neutral-800 disabled:opacity-30"
+              className="p-1.5 text-warm-500 hover:text-botanic-900 active:scale-90 transition-colors disabled:opacity-30"
               aria-label="Aumentar"
             >
               <Plus className="h-3 w-3" />
             </button>
           </div>
 
-          <span className="text-xs font-bold text-neutral-900 ml-auto">
+          <span className="text-xs sm:text-sm font-bold text-warm-900 font-serif">
             {formatPrice(itemTotal)}
           </span>
         </div>
@@ -78,7 +78,7 @@ export const CartItemRow: React.FC<CartItemRowProps> = ({
       <button
         type="button"
         onClick={() => onRemove(itemId)}
-        className="p-1.5 text-neutral-400 hover:text-rose-600 transition-colors"
+        className="p-2 text-warm-400 hover:text-terracotta-600 active:scale-90 transition-colors"
         aria-label="Remover item"
       >
         <Trash2 className="h-4 w-4" />

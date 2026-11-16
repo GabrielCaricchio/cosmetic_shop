@@ -3,7 +3,7 @@ import { CheckCircle2, Clock, Package, Truck, Check } from 'lucide-react';
 import { OrderStatus } from '../../types/order';
 
 export interface OrderStepperProps {
-  status: OrderStatus;
+  status: OrderStatus | string;
 }
 
 export const OrderStepper: React.FC<OrderStepperProps> = ({ status }) => {
@@ -15,7 +15,7 @@ export const OrderStepper: React.FC<OrderStepperProps> = ({ status }) => {
     { key: 'delivered', label: 'Entregue', icon: Check },
   ];
 
-  const getStepIndex = (st: OrderStatus) => {
+  const getStepIndex = (st: OrderStatus | string) => {
     switch (st) {
       case 'pending':
         return 0;
@@ -24,6 +24,10 @@ export const OrderStepper: React.FC<OrderStepperProps> = ({ status }) => {
       case 'processing':
       case 'under_review':
         return 2;
+      case 'shipped':
+        return 3;
+      case 'delivered':
+        return 4;
       default:
         return 0;
     }
@@ -34,9 +38,9 @@ export const OrderStepper: React.FC<OrderStepperProps> = ({ status }) => {
   return (
     <div className="w-full py-4">
       <div className="flex items-center justify-between relative">
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-neutral-200 w-full z-0" />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-warm-200 w-full z-0" />
         <div
-          className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-rose-600 transition-all duration-500 z-0"
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-gradient-to-r from-botanic-800 to-champagne-500 transition-all duration-500 z-0"
           style={{ width: `${(currentIndex / (steps.length - 1)) * 100}%` }}
         />
 
@@ -48,19 +52,19 @@ export const OrderStepper: React.FC<OrderStepperProps> = ({ status }) => {
           return (
             <div key={step.key} className="relative z-10 flex flex-col items-center">
               <div
-                className={`flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all duration-300 ${
+                className={`flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full border-2 transition-all duration-300 ${
                   isCompleted
-                    ? 'border-rose-600 bg-rose-600 text-white'
+                    ? 'border-botanic-800 bg-botanic-800 text-champagne-300 shadow-sm'
                     : isCurrent
-                    ? 'border-rose-600 bg-white text-rose-600 ring-4 ring-rose-100 shadow-sm'
-                    : 'border-neutral-300 bg-white text-neutral-400'
+                    ? 'border-champagne-500 bg-botanic-950 text-champagne-400 ring-4 ring-champagne-100 shadow-md'
+                    : 'border-warm-300 bg-white text-warm-400'
                 }`}
               >
                 <Icon className="h-4 w-4" />
               </div>
               <span
-                className={`mt-2 text-[11px] font-semibold text-center hidden sm:block ${
-                  isCurrent ? 'text-rose-600 font-bold' : isCompleted ? 'text-neutral-800' : 'text-neutral-400'
+                className={`mt-2 text-[10px] sm:text-[11px] font-semibold text-center hidden sm:block ${
+                  isCurrent ? 'text-botanic-950 font-bold' : isCompleted ? 'text-warm-800' : 'text-warm-400'
                 }`}
               >
                 {step.label}

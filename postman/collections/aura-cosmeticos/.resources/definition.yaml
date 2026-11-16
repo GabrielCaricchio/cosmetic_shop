@@ -1,0 +1,30 @@
+$kind: collection
+id: c7a8e52d-94b1-4f18-a6e3-cosmetic-shop-v2
+name: Aura Cosméticos — E-Commerce API Collection
+description: |-
+  Coleção completa e exaustiva de testes da API REST da Aura Cosméticos (FastAPI + Redis 7 + PostgreSQL 16 com pg_trgm).
+
+  Cobre 100% das rotas e funcionalidades:
+  - 01: Health Check & OpenAPI Specification
+  - 02: Autenticação de Clientes (Argon2id + JWT) & Conformidade LGPD
+  - 03: Catálogo de Cosméticos & Busca Fuzzy com Trigramas (pg_trgm)
+  - 04: Carrinho de Compras em Sessões Redis (Guest + Merge)
+  - 05: Checkout Idempotente, Travas Atômicas Anti-Overselling no Redis & Pix Instantâneo
+  - 06: Acompanhamento de Pedidos em Tempo Real (Order Stepper)
+  - 07: Webhooks de Pagamento (Aprovação e Rollback de Estoque)
+  - 08: Suporte ao Cliente & Redirecionamento WhatsApp
+  - 09: Backoffice Administrativo (RBAC: SuperAdmin / Admin, KPIs, CRUD de Produtos, Monitor de Travas Redis)
+variables:
+  baseUrl: http://localhost:8000
+  client_token: ""
+  admin_token: ""
+  guest_cart_id: guest-session-123e4567-e89b-12d3-a456-426614174000
+  order_id: ""
+  product_id: "1"
+  admin_product_id: ""
+  reservation_key: stock:reserved:demo-order:1
+  idempotency_key: 123e4567-e89b-12d3-a456-426614174000
+  user_email: camila.albuquerque@auracosmeticos.com.br
+  user_password: SenhaSegura123!
+  admin_email: admin@auracosmeticos.com.br
+  admin_password: Admin123!

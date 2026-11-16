@@ -1,0 +1,26 @@
+$kind: http-request
+url: "{{baseUrl}}/api/login"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "email": "{{user_email}}",
+      "password": "SenhaIncorreta999!"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 401 Unauthorized", function () {
+          pm.response.to.have.status(401);
+      });
+
+      pm.test("Retorna mensagem de erro padronizada", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("error");
+          pm.expect(json).to.have.property("message");
+      });
+    language: text/javascript
+order: 4000

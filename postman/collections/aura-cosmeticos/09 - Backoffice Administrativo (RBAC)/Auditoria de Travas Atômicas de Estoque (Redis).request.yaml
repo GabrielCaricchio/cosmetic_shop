@@ -1,0 +1,21 @@
+$kind: http-request
+url: "{{baseUrl}}/api/admin/inventory/reservations"
+method: GET
+headers:
+  Authorization: Bearer {{admin_token}}
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Lista de travas atômicas anti-overselling retornada", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.be.an("array");
+          if (json.length > 0 && json[0].key) {
+              pm.collectionVariables.set("reservation_key", json[0].key);
+          }
+      });
+    language: text/javascript
+order: 4000

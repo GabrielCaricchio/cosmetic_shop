@@ -1,0 +1,20 @@
+$kind: http-request
+url: "{{baseUrl}}/api/categories"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Retorna lista de categorias disponíveis", function () {
+          const json = pm.response.json();
+          const categories = json.items || json;
+          pm.expect(categories).to.be.an("array");
+          pm.expect(categories.length).to.be.above(0);
+          pm.expect(categories[0]).to.have.property("slug");
+          pm.expect(categories[0]).to.have.property("name");
+      });
+    language: text/javascript
+order: 1000

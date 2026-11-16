@@ -1,0 +1,38 @@
+$kind: http-request
+url: "{{baseUrl}}/api/register"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "Camila Albuquerque",
+      "email": "{{user_email}}",
+      "password": "SenhaSegura123!",
+      "phone": "11987654321",
+      "lgpd_consent": true
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      const timestamp = Date.now();
+      const email = `camila.teste_${timestamp}@auracosmeticos.com.br`;
+      pm.collectionVariables.set("user_email", email);
+      pm.variables.set("register_email", email);
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 201 Created", function () {
+          pm.response.to.have.status(201);
+      });
+
+      pm.test("Retorna token JWT válido e salva na coleção", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("access_token");
+          pm.expect(json.token_type).to.eql("bearer");
+          pm.expect(json.access_token.length).to.be.above(20);
+          pm.collectionVariables.set("client_token", json.access_token);
+      });
+    language: text/javascript
+order: 1000

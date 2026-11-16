@@ -40,7 +40,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       onClose();
       if (onSuccess) onSuccess();
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.detail || 'E-mail ou senha inválidos.');
+      setErrorMsg(err.response?.data?.message || err.response?.data?.detail || 'E-mail ou senha inválidos.');
     }
   };
 
@@ -63,7 +63,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       onClose();
       if (onSuccess) onSuccess();
     } catch (err: any) {
-      setErrorMsg(err.response?.data?.detail || 'Erro ao criar conta. Verifique os dados.');
+      setErrorMsg(err.response?.data?.message || err.response?.data?.detail || 'Erro ao criar conta. Verifique os dados.');
     }
   };
 
@@ -71,20 +71,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={tab === 'login' ? 'Identificação' : 'Criar Nova Conta'}
+      title={tab === 'login' ? 'Identificação do Cliente' : 'Cadastre-se na Aura'}
       maxWidth="md"
     >
-      <div className="flex border-b border-neutral-200 mb-6">
+      <div className="flex border-b border-warm-200 mb-6">
         <button
           type="button"
           onClick={() => {
             setTab('login');
             setErrorMsg('');
           }}
-          className={`flex-1 pb-3 text-center text-sm font-semibold border-b-2 transition-all ${
+          className={`flex-1 pb-3 text-center text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
             tab === 'login'
-              ? 'border-rose-600 text-rose-600'
-              : 'border-transparent text-neutral-400 hover:text-neutral-700'
+              ? 'border-botanic-800 text-botanic-950'
+              : 'border-transparent text-warm-400 hover:text-warm-700'
           }`}
         >
           Já sou cliente
@@ -95,10 +95,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             setTab('register');
             setErrorMsg('');
           }}
-          className={`flex-1 pb-3 text-center text-sm font-semibold border-b-2 transition-all ${
+          className={`flex-1 pb-3 text-center text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${
             tab === 'register'
-              ? 'border-rose-600 text-rose-600'
-              : 'border-transparent text-neutral-400 hover:text-neutral-700'
+              ? 'border-botanic-800 text-botanic-950'
+              : 'border-transparent text-warm-400 hover:text-warm-700'
           }`}
         >
           Primeira compra
@@ -106,7 +106,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       </div>
 
       {errorMsg && (
-        <div className="mb-4 rounded-xl bg-red-50 p-3 text-xs text-red-700 font-medium border border-red-200">
+        <div className="mb-4 rounded-2xl bg-terracotta-50 p-3.5 text-xs text-terracotta-700 font-medium border border-terracotta-200">
           {errorMsg}
         </div>
       )}
@@ -119,10 +119,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             required
             value={loginEmail}
             onChange={(e) => setLoginEmail(e.target.value)}
-            placeholder="seu@email.com"
+            placeholder="seu.email@exemplo.com"
           />
           <Input
-            label="Senha"
+            label="Senha de Acesso"
             type="password"
             required
             value={loginPassword}
@@ -133,9 +133,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <Button
             type="submit"
             isLoading={isLoading}
-            className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 mt-2"
+            className="w-full bg-gradient-to-r from-botanic-900 to-botanic-950 text-champagne-300 font-bold py-3.5 mt-2 rounded-2xl shadow-soft"
           >
-            Acessar Conta
+            Acessar Minha Conta
           </Button>
         </form>
       ) : (
@@ -145,7 +145,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Ex: Maria Silva"
+            placeholder="Ex: Camila Albuquerque"
           />
           <Input
             label="E-mail"
@@ -153,7 +153,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             required
             value={regEmail}
             onChange={(e) => setRegEmail(e.target.value)}
-            placeholder="seu@email.com"
+            placeholder="seu.email@exemplo.com"
           />
           <div className="grid grid-cols-2 gap-3">
             <Input
@@ -163,7 +163,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               placeholder="000.000.000-00"
             />
             <Input
-              label="WhatsApp / Celular"
+              label="WhatsApp"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="(11) 99999-9999"
@@ -178,17 +178,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             placeholder="Mínimo 8 caracteres"
           />
 
-          {/* LGPD Consent */}
-          <div className="rounded-xl bg-neutral-50 p-3 border border-neutral-200 mt-2">
+          <div className="rounded-2xl bg-warm-50 p-3 border border-warm-200">
             <label className="flex items-start gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
+                required
                 checked={lgpdConsent}
                 onChange={(e) => setLgpdConsent(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-neutral-300 text-rose-600 focus:ring-rose-500"
+                className="mt-0.5 h-4 w-4 rounded border-warm-300 text-botanic-900 focus:ring-botanic-700"
               />
-              <span className="text-xs text-neutral-600 leading-snug">
-                Concordo com a coleta e tratamento dos meus dados pessoais para processamento e entrega de pedidos nos termos da <strong>LGPD (Lei nº 13.709/2018)</strong>.
+              <span className="text-[11px] text-warm-700 leading-snug">
+                Concordo com os Termos e com o tratamento dos meus dados para compra de acordo com a LGPD.
               </span>
             </label>
           </div>
@@ -196,9 +196,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <Button
             type="submit"
             isLoading={isLoading}
-            className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 mt-2"
+            className="w-full bg-gradient-to-r from-botanic-900 to-botanic-950 text-champagne-300 font-bold py-3.5 mt-2 rounded-2xl shadow-soft"
           >
-            Cadastrar e Continuar
+            Concluir Cadastro & Acessar
           </Button>
         </form>
       )}

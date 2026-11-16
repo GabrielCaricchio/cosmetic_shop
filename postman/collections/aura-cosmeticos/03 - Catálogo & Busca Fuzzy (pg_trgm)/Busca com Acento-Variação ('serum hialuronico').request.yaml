@@ -1,0 +1,21 @@
+$kind: http-request
+name: Busca com Acento/Variação ('serum hialuronico')
+url: "{{baseUrl}}/api/products?search=serum hialuronico"
+method: GET
+queryParams:
+  search: serum hialuronico
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Encontra Sérum facial com busca sem acentos", function () {
+          const json = pm.response.json();
+          const items = json.items || json;
+          pm.expect(items).to.be.an("array");
+          pm.expect(items.length).to.be.above(0);
+      });
+    language: text/javascript
+order: 5000

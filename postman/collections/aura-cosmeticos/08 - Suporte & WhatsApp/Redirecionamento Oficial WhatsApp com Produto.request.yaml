@@ -1,0 +1,13 @@
+$kind: http-request
+url: "{{baseUrl}}/api/whatsapp-redirect?product_name=Batom Matte"
+method: GET
+queryParams:
+  product_name: Batom Matte
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 ou Redirecionamento (307)", function () {
+          pm.expect([200, 307]).to.include(pm.response.code);
+      });
+    language: text/javascript
+order: 1000

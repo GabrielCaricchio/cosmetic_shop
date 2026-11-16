@@ -1,0 +1,60 @@
+$kind: http-request
+url: "{{baseUrl}}/api/checkout"
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{client_token}}
+  Idempotency-Key: "{{idempotency_key}}"
+body:
+  type: json
+  content: |-
+    {
+      "customer_name": "Camila Albuquerque",
+      "customer_email": "{{user_email}}",
+      "customer_cpf": "123.456.789-00",
+      "customer_phone": "11987654321",
+      "shipping_address": {
+        "street": "Avenida Paulista",
+        "number": "1000",
+        "complement": "Apto 42",
+        "neighborhood": "Bela Vista",
+        "city": "S\u00e3o Paulo",
+        "state": "SP",
+        "zip_code": "01310-100"
+      },
+      "payment_method": "pix",
+      "items": [
+        {
+          "product_id": 1,
+          "quantity": 1
+        }
+      ]
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+          const r = (Math.random() * 16) | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+      });
+      pm.collectionVariables.set("idempotency_key", uuid);
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 202 Accepted", function () {
+          pm.response.to.have.status(202);
+      });
+
+      pm.test("Pedido criado, estoque reservado no Redis e Pix emitido", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("order_id");
+          pm.expect(json.status).to.eql("pending");
+          pm.expect(json.payment_method).to.eql("pix");
+          pm.expect(json).to.have.property("pix_copy_paste");
+          pm.expect(json).to.have.property("pix_qr_code_base64");
+          
+          pm.collectionVariables.set("order_id", json.order_id);
+      });
+    language: text/javascript
+order: 1000

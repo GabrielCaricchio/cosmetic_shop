@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, ArrowLeft, QrCode, CreditCard, Lock } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, QrCode, CreditCard, Lock, Sparkles, CheckCircle2 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { PixPaymentBox } from '../../components/client/PixPaymentBox';
@@ -25,7 +25,7 @@ export const CheckoutPage: React.FC = () => {
   const { cartItems, totalAmount, clearCart } = useCart();
   const { user } = useAuth();
 
-  // Check for direct buy from PDP
+  // Item de compra direta da PDP (Comprar Agora)
   const [directItem] = useState<{ product: any; quantity: number } | null>(() => {
     try {
       const stored = sessionStorage.getItem('direct_checkout_item');
@@ -44,7 +44,7 @@ export const CheckoutPage: React.FC = () => {
   const [phone, setPhone] = useState(user?.phone || '');
   const [lgpdConsent, setLgpdConsent] = useState(user?.lgpd_consent || false);
 
-  // Address State
+  // Endereço
   const [street, setStreet] = useState('');
   const [number, setNumber] = useState('');
   const [complement, setComplement] = useState('');
@@ -53,12 +53,12 @@ export const CheckoutPage: React.FC = () => {
   const [state, setState] = useState('SP');
   const [zipCode, setZipCode] = useState('');
 
-  // Payment
+  // Pagamento
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credit_card'>('pix');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Result state
+  // Pedido gerado
   const [createdOrder, setCreatedOrder] = useState<any | null>(null);
 
   const itemsToBuy = directItem
@@ -77,7 +77,9 @@ export const CheckoutPage: React.FC = () => {
     ? (directItem.product.promotional_price ?? directItem.product.price) * directItem.quantity
     : totalAmount;
 
-  // Poll order approval once order is created with Pix
+  const pixCheckoutTotal = checkoutTotal * 0.95;
+
+  // Polling automático da aprovação do Pix a cada 3s
   useOrderPolling(
     createdOrder?.order_id,
     () => {
@@ -99,27 +101,24 @@ export const CheckoutPage: React.FC = () => {
     e.preventDefault();
     setErrorMsg('');
 
-    if (!lgpdConsent && !user) {
-      setErrorMsg('É obrigatório concordar com o tratamento de dados (LGPD) para prosseguir.');
+    if (!user && !lgpdConsent) {
+      setErrorMsg('É necessário aceitar os termos de consentimento LGPD para continuar.');
       return;
     }
 
     if (itemsToBuy.length === 0) {
-      setErrorMsg('Nenhum item selecionado para o checkout.');
+      setErrorMsg('Sua sacola está vazia.');
       return;
     }
 
     setIsSubmitting(true);
+
     try {
-      const payload = {
-        payment_method: paymentMethod,
-        customer: {
-          name,
-          email,
-          cpf,
-          phone,
-          lgpd_consent: lgpdConsent,
-        },
+      const payload: any = {
+        customer_name: name,
+        customer_email: email,
+        customer_cpf: cpf,
+        customer_phone: phone,
         shipping_address: {
           street,
           number,
@@ -129,11 +128,22 @@ export const CheckoutPage: React.FC = () => {
           state,
           zip_code: zipCode,
         },
-        items: itemsToBuy.map((i: any) => ({
-          product_id: i.id || i.product_id,
-          quantity: i.quantity,
-        })),
+        payment_method: paymentMethod,
       };
+
+      if (directItem) {
+        payload.items = [
+          {
+            product_id: directItem.product.id || directItem.product.product_id,
+            quantity: directItem.quantity,
+          },
+        ];
+      } else {
+        payload.items = cartItems.map((item) => ({
+          product_id: item.product_id !== undefined ? item.product_id : item.id,
+          quantity: item.quantity,
+        }));
+      }
 
       const res = await apiClient.post('/checkout', payload, {
         headers: {
@@ -142,14 +152,9 @@ export const CheckoutPage: React.FC = () => {
       });
 
       setCreatedOrder(res.data);
-      if (res.data.payment_method !== 'pix') {
-        clearCart();
-        sessionStorage.removeItem('direct_checkout_item');
-        navigate(`/pedido-confirmado/${res.data.order_id}`);
-      }
     } catch (err: any) {
       setErrorMsg(
-        err.response?.data?.detail || 'Erro ao processar o checkout. Tente novamente.'
+        err.response?.data?.message || err.response?.data?.detail || 'Erro ao processar o checkout. Tente novamente.'
       );
     } finally {
       setIsSubmitting(false);
@@ -157,35 +162,48 @@ export const CheckoutPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-warm-50 py-6 sm:py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
+        {/* Navegação Voltar */}
         <button
           type="button"
           onClick={() => navigate('/')}
-          className="inline-flex items-center gap-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 transition-colors mb-6"
+          className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-warm-700 hover:text-botanic-950 transition-colors mb-6 active:scale-95"
         >
           <ArrowLeft className="h-4 w-4" /> Voltar à loja
         </button>
 
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 font-serif mb-6 flex items-center gap-2">
-          <Lock className="h-6 w-6 text-emerald-600" /> Checkout Seguro One-Page
-        </h1>
+        {/* Título & Selos de Confiança */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 pb-4 border-b border-warm-200/90">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-warm-900 font-serif flex items-center gap-2.5">
+              <Lock className="h-6 w-6 text-emerald-700" /> Checkout Seguro
+            </h1>
+            <p className="text-xs text-warm-500 mt-1">Finalização rápida em 1 página com trava atômica de estoque.</p>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200/80 font-semibold w-fit">
+            <ShieldCheck className="h-4 w-4 text-emerald-700" />
+            Blindagem Criptográfica SSL 256-bit
+          </div>
+        </div>
 
         {errorMsg && (
-          <div className="mb-6 rounded-2xl bg-red-50 p-4 text-sm text-red-700 font-medium border border-red-200">
+          <div className="mb-6 rounded-2xl bg-terracotta-50 p-4 text-xs sm:text-sm text-terracotta-700 font-medium border border-terracotta-200">
             {errorMsg}
           </div>
         )}
 
-        {/* Se o Pix já foi gerado, exibe a tela de pagamento do Pix com polling */}
+        {/* Exibição do Pix gerado */}
         {createdOrder && createdOrder.pix_details ? (
           <div className="max-w-md mx-auto space-y-6">
-            <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-center">
-              <h2 className="text-base font-bold text-emerald-800">
+            <div className="rounded-3xl bg-emerald-50 border border-emerald-200 p-5 text-center shadow-soft">
+              <CheckCircle2 className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
+              <h2 className="text-base font-bold text-emerald-900 font-serif">
                 Pedido #{createdOrder.order_number || createdOrder.order_id} Criado!
               </h2>
-              <p className="text-xs text-emerald-700 mt-1">
-                Aguardando confirmação do pagamento via Pix pelo banco...
+              <p className="text-xs text-emerald-700 mt-1 font-medium">
+                Pague com o Pix abaixo. Confirmaremos seu pagamento instantaneamente nesta tela.
               </p>
             </div>
 
@@ -198,18 +216,19 @@ export const CheckoutPage: React.FC = () => {
             <Button
               variant="outline"
               onClick={() => navigate(`/pedido-confirmado/${createdOrder.order_id}`)}
-              className="w-full text-xs text-neutral-600 border-neutral-300"
+              className="w-full text-xs font-semibold text-warm-700 border-warm-300"
             >
-              Já paguei / Ver detalhes do pedido
+              Já realizei o pagamento / Ver detalhes
             </Button>
           </div>
         ) : (
-          <form onSubmit={handleCheckout} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <form onSubmit={handleCheckout} className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
             <div className="lg:col-span-2 space-y-6">
-              {/* Dados do Cliente */}
-              <div className="rounded-2xl bg-white p-6 shadow-sm border border-neutral-200">
-                <h2 className="text-base font-bold text-neutral-900 mb-4 pb-2 border-b border-neutral-100">
-                  1. Dados Pessoais
+              {/* 1. Dados Pessoais */}
+              <div className="rounded-3xl bg-white p-5 sm:p-7 shadow-soft border border-warm-200/90 space-y-4">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-botanic-900 pb-2 border-b border-warm-100 flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-botanic-900 text-champagne-300 text-xs">1</span>
+                  Dados de Contato & Identificação
                 </h2>
                 <div className="space-y-3.5">
                   <Input
@@ -217,7 +236,7 @@ export const CheckoutPage: React.FC = () => {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Nome como no documento"
+                    placeholder="Nome como consta no documento"
                   />
                   <Input
                     label="E-mail para confirmação"
@@ -225,9 +244,9 @@ export const CheckoutPage: React.FC = () => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="seu@email.com"
+                    placeholder="seu.email@exemplo.com"
                   />
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                     <Input
                       label="CPF"
                       required
@@ -236,7 +255,7 @@ export const CheckoutPage: React.FC = () => {
                       placeholder="000.000.000-00"
                     />
                     <Input
-                      label="WhatsApp"
+                      label="WhatsApp / Telefone"
                       required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
@@ -245,16 +264,16 @@ export const CheckoutPage: React.FC = () => {
                   </div>
 
                   {!user && (
-                    <div className="rounded-xl bg-neutral-50 p-3 border border-neutral-200 mt-2">
+                    <div className="rounded-2xl bg-warm-50 p-3.5 border border-warm-200 mt-2">
                       <label className="flex items-start gap-2.5 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={lgpdConsent}
                           onChange={(e) => setLgpdConsent(e.target.checked)}
-                          className="mt-1 h-4 w-4 rounded border-neutral-300 text-rose-600 focus:ring-rose-500"
+                          className="mt-0.5 h-4 w-4 rounded border-warm-300 text-botanic-900 focus:ring-botanic-700"
                         />
-                        <span className="text-xs text-neutral-600 leading-snug">
-                          Concordo com o tratamento dos dados pessoais para processar este pedido (LGPD).
+                        <span className="text-xs text-warm-700 leading-snug">
+                          Concordo com o tratamento dos meus dados pessoais para emissão de nota fiscal e entrega do pedido conforme as diretrizes da <strong>LGPD</strong>.
                         </span>
                       </label>
                     </div>
@@ -262,14 +281,15 @@ export const CheckoutPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Endereço de Entrega */}
-              <div className="rounded-2xl bg-white p-6 shadow-sm border border-neutral-200">
-                <h2 className="text-base font-bold text-neutral-900 mb-4 pb-2 border-b border-neutral-100">
-                  2. Endereço de Entrega
+              {/* 2. Endereço de Entrega */}
+              <div className="rounded-3xl bg-white p-5 sm:p-7 shadow-soft border border-warm-200/90 space-y-4">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-botanic-900 pb-2 border-b border-warm-100 flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-botanic-900 text-champagne-300 text-xs">2</span>
+                  Endereço de Entrega
                 </h2>
                 <div className="space-y-3.5">
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="col-span-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                    <div className="sm:col-span-1">
                       <Input
                         label="CEP"
                         required
@@ -278,18 +298,18 @@ export const CheckoutPage: React.FC = () => {
                         placeholder="00000-000"
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <Input
                         label="Rua / Avenida"
                         required
                         value={street}
                         onChange={(e) => setStreet(e.target.value)}
-                        placeholder="Logradouro"
+                        placeholder="Avenida Paulista, Rua..."
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                     <div>
                       <Input
                         label="Número"
@@ -299,17 +319,17 @@ export const CheckoutPage: React.FC = () => {
                         placeholder="123"
                       />
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <Input
                         label="Complemento"
                         value={complement}
                         onChange={(e) => setComplement(e.target.value)}
-                        placeholder="Apto 42, Bloco B"
+                        placeholder="Apto 42, Bloco B (Opcional)"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                     <div>
                       <Input
                         label="Bairro"
@@ -334,83 +354,103 @@ export const CheckoutPage: React.FC = () => {
                         required
                         value={state}
                         onChange={(e) => setState(e.target.value)}
-                        placeholder="UF"
+                        placeholder="SP"
                       />
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Forma de Pagamento */}
-              <div className="rounded-2xl bg-white p-6 shadow-sm border border-neutral-200">
-                <h2 className="text-base font-bold text-neutral-900 mb-4 pb-2 border-b border-neutral-100">
-                  3. Pagamento
+              {/* 3. Forma de Pagamento */}
+              <div className="rounded-3xl bg-white p-5 sm:p-7 shadow-soft border border-warm-200/90 space-y-4">
+                <h2 className="text-sm font-bold uppercase tracking-wider text-botanic-900 pb-2 border-b border-warm-100 flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-botanic-900 text-champagne-300 text-xs">3</span>
+                  Método de Pagamento
                 </h2>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('pix')}
-                    className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                    className={`flex flex-col items-start p-4 rounded-2xl border-2 transition-all duration-200 active:scale-98 text-left ${
                       paymentMethod === 'pix'
-                        ? 'border-rose-600 bg-rose-50/40 text-rose-700'
-                        : 'border-neutral-200 hover:border-neutral-300 text-neutral-600'
+                        ? 'border-botanic-800 bg-botanic-50/60 shadow-soft'
+                        : 'border-warm-200 hover:border-warm-300 bg-warm-50/40 text-warm-700'
                     }`}
                   >
-                    <QrCode className="h-6 w-6 mb-1 text-emerald-600" />
-                    <span className="text-sm font-bold">Pix Instantâneo</span>
-                    <span className="text-[11px] text-emerald-600 font-semibold">
-                      Aprovação em segundos
+                    <div className="flex items-center justify-between w-full mb-2">
+                      <QrCode className="h-6 w-6 text-botanic-800" />
+                      <span className="rounded-full bg-champagne-500 text-botanic-950 font-black text-[10px] px-2 py-0.5 uppercase tracking-wide">
+                        5% OFF
+                      </span>
+                    </div>
+                    <span className="text-sm font-bold text-warm-900 font-serif">Pix Instantâneo</span>
+                    <span className="text-[11px] text-emerald-800 font-semibold mt-0.5">
+                      Aprovação em segundos e reserva garantida
                     </span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('credit_card')}
-                    className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${
+                    className={`flex flex-col items-start p-4 rounded-2xl border-2 transition-all duration-200 active:scale-98 text-left ${
                       paymentMethod === 'credit_card'
-                        ? 'border-rose-600 bg-rose-50/40 text-rose-700'
-                        : 'border-neutral-200 hover:border-neutral-300 text-neutral-600'
+                        ? 'border-botanic-800 bg-botanic-50/60 shadow-soft'
+                        : 'border-warm-200 hover:border-warm-300 bg-warm-50/40 text-warm-700'
                     }`}
                   >
-                    <CreditCard className="h-6 w-6 mb-1 text-neutral-700" />
-                    <span className="text-sm font-bold">Cartão de Crédito</span>
-                    <span className="text-[11px] text-neutral-400">Até 3x sem juros</span>
+                    <CreditCard className="h-6 w-6 mb-2 text-warm-600" />
+                    <span className="text-sm font-bold text-warm-900 font-serif">Cartão de Crédito</span>
+                    <span className="text-[11px] text-warm-500 font-medium mt-0.5">
+                      Parcele em até 3x sem juros
+                    </span>
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Resumo Lateral */}
-            <div className="rounded-2xl bg-white p-6 shadow-sm border border-neutral-200 h-fit space-y-4">
-              <h2 className="text-base font-bold text-neutral-900 pb-2 border-b border-neutral-100">
-                Resumo dos Produtos
+            {/* Resumo dos Produtos & Finalização */}
+            <div className="rounded-3xl bg-white p-5 sm:p-7 shadow-luxury border border-warm-200/90 h-fit space-y-4">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-botanic-900 pb-2 border-b border-warm-100 font-serif">
+                Resumo do Pedido
               </h2>
 
-              <div className="divide-y divide-neutral-100 max-h-60 overflow-y-auto pr-1">
+              <div className="divide-y divide-warm-100 max-h-60 overflow-y-auto pr-1">
                 {itemsToBuy.map((it: any) => (
                   <div key={it.id || it.product_id} className="py-2.5 flex justify-between text-xs">
-                    <span className="text-neutral-700 font-medium truncate max-w-[180px]">
+                    <span className="text-warm-700 font-medium truncate max-w-[170px]">
                       {it.quantity}x {it.name}
                     </span>
-                    <span className="text-neutral-900 font-bold shrink-0">
+                    <span className="text-warm-900 font-bold shrink-0 font-serif">
                       {formatPrice(it.price * it.quantity)}
                     </span>
                   </div>
                 ))}
               </div>
 
-              <div className="pt-3 border-t border-neutral-100 space-y-2 text-sm text-neutral-600">
+              <div className="pt-3 border-t border-warm-100 space-y-2 text-xs text-warm-600">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
-                  <span>{formatPrice(checkoutTotal)}</span>
+                  <span className="font-semibold text-warm-900">{formatPrice(checkoutTotal)}</span>
                 </div>
-                <div className="flex justify-between text-emerald-600 font-medium">
-                  <span>Frete Grátis:</span>
-                  <span>R$ 0,00</span>
+                <div className="flex justify-between text-emerald-800 font-bold">
+                  <span>Frete Expresso:</span>
+                  <span>GRÁTIS</span>
                 </div>
-                <div className="flex justify-between text-base font-bold text-neutral-900 pt-2 border-t border-neutral-100">
+
+                {paymentMethod === 'pix' && (
+                  <div className="flex justify-between text-emerald-800 font-bold bg-emerald-50 p-2 rounded-xl">
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3 text-emerald-600" /> Desconto Pix (5%):
+                    </span>
+                    <span>- {formatPrice(checkoutTotal * 0.05)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between text-base font-bold text-warm-900 pt-3 border-t border-warm-100 font-serif">
                   <span>Total a Pagar:</span>
-                  <span>{formatPrice(checkoutTotal)}</span>
+                  <span className="text-lg text-botanic-900">
+                    {formatPrice(paymentMethod === 'pix' ? pixCheckoutTotal : checkoutTotal)}
+                  </span>
                 </div>
               </div>
 
@@ -418,13 +458,14 @@ export const CheckoutPage: React.FC = () => {
                 type="submit"
                 size="lg"
                 isLoading={isSubmitting}
-                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3.5 mt-4"
+                className="w-full bg-gradient-to-r from-botanic-900 to-botanic-950 text-champagne-300 font-bold py-4 mt-4 shadow-luxury hover:from-botanic-950 hover:to-black active:scale-[0.98] rounded-2xl"
               >
                 Gerar Pix e Concluir Pedido
               </Button>
 
-              <div className="flex items-center justify-center gap-1.5 text-xs text-neutral-500 pt-2">
-                <ShieldCheck className="h-4 w-4 text-emerald-600" /> Transação Criptografada SSL
+              <div className="flex items-center justify-center gap-1.5 text-[11px] text-warm-500 pt-2 text-center">
+                <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
+                <span>Compra garantida com antifraude e proteção LGPD</span>
               </div>
             </div>
           </form>

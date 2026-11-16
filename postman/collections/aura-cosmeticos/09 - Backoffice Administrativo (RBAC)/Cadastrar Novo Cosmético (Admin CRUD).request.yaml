@@ -1,0 +1,47 @@
+$kind: http-request
+url: "{{baseUrl}}/api/admin/products"
+method: POST
+headers:
+  Content-Type: application/json
+  Authorization: Bearer {{admin_token}}
+body:
+  type: json
+  content: |-
+    {
+      "name": "{{admin_prod_name}}",
+      "slug": "{{admin_prod_slug}}",
+      "brand": "Aura Priv\u00e9e",
+      "price": 69.9,
+      "stock_quantity": 40,
+      "description": "Edi\u00e7\u00e3o de luxo com acabamento aveludado e hidrata\u00e7\u00e3o profunda.",
+      "ingredients": "\u00d3leo de Rosa Mosqueta, Vitamina E e Pigmentos Minerais.",
+      "how_to_use": "Aplique diretamente nos l\u00e1bios.",
+      "is_active": true,
+      "images": [
+        {
+          "image_url": "https://images.unsplash.com/photo-1586495777744-4413f21062fa?w=600",
+          "is_primary": true
+        }
+      ]
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      const uniqueSuffix = Date.now();
+      pm.variables.set("admin_prod_name", "Batom Velvet Edição Especial " + uniqueSuffix);
+      pm.variables.set("admin_prod_slug", "batom-velvet-especial-" + uniqueSuffix);
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 201 Created", function () {
+          pm.response.to.have.status(201);
+      });
+
+      pm.test("Cosmético criado e ID armazenado", function () {
+          const json = pm.response.json();
+          const pid = json.id || json.product_id;
+          pm.expect(pid).to.be.ok;
+          pm.collectionVariables.set("admin_product_id", String(pid));
+      });
+    language: text/javascript
+order: 5000

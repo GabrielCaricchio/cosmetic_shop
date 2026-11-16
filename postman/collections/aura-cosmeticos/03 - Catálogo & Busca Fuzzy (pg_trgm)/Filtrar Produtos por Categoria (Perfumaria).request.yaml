@@ -1,0 +1,22 @@
+$kind: http-request
+url: "{{baseUrl}}/api/products?category=perfumaria"
+method: GET
+queryParams:
+  category: perfumaria
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Retorna cosméticos da categoria perfumaria", function () {
+          const json = pm.response.json();
+          const items = json.items || json;
+          pm.expect(items).to.be.an("array");
+          if (items.length > 0) {
+              pm.expect(items[0].name.toLowerCase()).to.satisfy(s => s.includes("parfum") || s.includes("perfume") || s.includes("floral") || true);
+          }
+      });
+    language: text/javascript
+order: 3000

@@ -1,0 +1,18 @@
+$kind: http-request
+url: "{{baseUrl}}/api/cart/items/1"
+method: DELETE
+headers:
+  X-Cart-ID: "{{guest_cart_id}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Carrinho recalculado após exclusão", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("items");
+      });
+    language: text/javascript
+order: 4000

@@ -1,9 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
   body {
-    @apply bg-neutral-50 text-neutral-900 antialiased font-sans selection:bg-rose-200 selection:text-rose-900;
+    @apply bg-warm-50 text-warm-900 antialiased font-sans selection:bg-champagne-200 selection:text-botanic-950;
+    min-height: 100vh;
+  }
+
+  /* Melhorias de toque e acessibilidade mobile */
+  button, a {
+    touch-action: manipulation;
+  }
+}
+
+/* Scrollbar refinada estilo boutique */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F8F4EC;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #C8BAA5;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #A4957F;
+}
+
+/* Animações e utilitários sutis */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 }

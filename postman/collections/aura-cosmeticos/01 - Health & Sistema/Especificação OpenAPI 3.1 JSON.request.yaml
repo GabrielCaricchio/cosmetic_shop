@@ -1,0 +1,20 @@
+$kind: http-request
+url: "{{baseUrl}}/openapi.json"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Esquema OpenAPI válido e rotas documentadas", function () {
+          const json = pm.response.json();
+          pm.expect(json.openapi).to.be.a("string");
+          pm.expect(json.info.title).to.include("Aura Cosméticos");
+          pm.expect(json.paths).to.be.an("object");
+          pm.expect(json.paths).to.have.property("/api/health");
+          pm.expect(json.paths).to.have.property("/api/checkout");
+      });
+    language: text/javascript
+order: 2000

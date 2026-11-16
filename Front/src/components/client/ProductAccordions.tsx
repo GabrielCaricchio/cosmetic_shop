@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, Sparkles, ShieldCheck, HeartHandshake } from 'lucide-react';
+import { ChevronDown, Sparkles, ShieldCheck, HeartHandshake, Leaf } from 'lucide-react';
 
 export interface ProductAccordionsProps {
   description?: string | null;
@@ -19,26 +19,26 @@ export const ProductAccordions: React.FC<ProductAccordionsProps> = ({
   };
 
   return (
-    <div className="divide-y divide-neutral-200 border-y border-neutral-200 mt-6">
+    <div className="divide-y divide-warm-200/80 border-y border-warm-200/80 mt-8">
       {/* Descrição */}
       {description && (
-        <div className="py-4">
+        <div className="py-4.5">
           <button
             type="button"
             onClick={() => toggle('desc')}
-            className="flex w-full items-center justify-between text-left font-medium text-neutral-900"
+            className="flex w-full items-center justify-between text-left font-medium text-warm-900 group"
           >
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Sparkles className="h-4 w-4 text-rose-500" /> Descrição do Produto
+            <span className="flex items-center gap-2.5 text-sm font-bold font-serif text-warm-900 group-hover:text-botanic-800 transition-colors">
+              <Sparkles className="h-4 w-4 text-champagne-600" /> Descrição & Sensorial
             </span>
             <ChevronDown
-              className={`h-4 w-4 text-neutral-500 transition-transform duration-200 ${
-                openSection === 'desc' ? 'rotate-180' : ''
+              className={`h-4 w-4 text-warm-500 transition-transform duration-300 ${
+                openSection === 'desc' ? 'rotate-180 text-botanic-800' : ''
               }`}
             />
           </button>
           {openSection === 'desc' && (
-            <p className="mt-3 text-sm text-neutral-600 leading-relaxed whitespace-pre-line">
+            <p className="mt-3 text-xs sm:text-sm text-warm-700 leading-relaxed whitespace-pre-line font-normal">
               {description}
             </p>
           )}
@@ -47,23 +47,23 @@ export const ProductAccordions: React.FC<ProductAccordionsProps> = ({
 
       {/* Modo de Uso */}
       {howToUse && (
-        <div className="py-4">
+        <div className="py-4.5">
           <button
             type="button"
             onClick={() => toggle('usage')}
-            className="flex w-full items-center justify-between text-left font-medium text-neutral-900"
+            className="flex w-full items-center justify-between text-left font-medium text-warm-900 group"
           >
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <HeartHandshake className="h-4 w-4 text-rose-500" /> Modo de Uso
+            <span className="flex items-center gap-2.5 text-sm font-bold font-serif text-warm-900 group-hover:text-botanic-800 transition-colors">
+              <HeartHandshake className="h-4 w-4 text-champagne-600" /> Ritual & Modo de Usar
             </span>
             <ChevronDown
-              className={`h-4 w-4 text-neutral-500 transition-transform duration-200 ${
-                openSection === 'usage' ? 'rotate-180' : ''
+              className={`h-4 w-4 text-warm-500 transition-transform duration-300 ${
+                openSection === 'usage' ? 'rotate-180 text-botanic-800' : ''
               }`}
             />
           </button>
           {openSection === 'usage' && (
-            <p className="mt-3 text-sm text-neutral-600 leading-relaxed whitespace-pre-line">
+            <p className="mt-3 text-xs sm:text-sm text-warm-700 leading-relaxed whitespace-pre-line font-normal">
               {howToUse}
             </p>
           )}
@@ -72,50 +72,59 @@ export const ProductAccordions: React.FC<ProductAccordionsProps> = ({
 
       {/* Ingredientes / Composição */}
       {ingredients && (
-        <div className="py-4">
+        <div className="py-4.5">
           <button
             type="button"
             onClick={() => toggle('ingredients')}
-            className="flex w-full items-center justify-between text-left font-medium text-neutral-900"
+            className="flex w-full items-center justify-between text-left font-medium text-warm-900 group"
           >
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Sparkles className="h-4 w-4 text-rose-500" /> Ingredientes & Composição
+            <span className="flex items-center gap-2.5 text-sm font-bold font-serif text-warm-900 group-hover:text-botanic-800 transition-colors">
+              <Leaf className="h-4 w-4 text-botanic-700" /> Ativos & Ingredientes Puros
             </span>
             <ChevronDown
-              className={`h-4 w-4 text-neutral-500 transition-transform duration-200 ${
-                openSection === 'ingredients' ? 'rotate-180' : ''
+              className={`h-4 w-4 text-warm-500 transition-transform duration-300 ${
+                openSection === 'ingredients' ? 'rotate-180 text-botanic-800' : ''
               }`}
             />
           </button>
           {openSection === 'ingredients' && (
-            <p className="mt-3 text-xs text-neutral-600 font-mono leading-relaxed bg-neutral-50 p-3 rounded-xl border border-neutral-200">
+            <div className="mt-3 text-xs text-warm-700 font-mono leading-relaxed bg-warm-100/70 p-3.5 rounded-2xl border border-warm-200">
               {ingredients}
-            </p>
+            </div>
           )}
         </div>
       )}
 
       {/* Envio e Garantia */}
-      <div className="py-4">
+      <div className="py-4.5">
         <button
           type="button"
           onClick={() => toggle('shipping')}
-          className="flex w-full items-center justify-between text-left font-medium text-neutral-900"
+          className="flex w-full items-center justify-between text-left font-medium text-warm-900 group"
         >
-          <span className="flex items-center gap-2 text-sm font-semibold">
-            <ShieldCheck className="h-4 w-4 text-emerald-600" /> Envio Seguro & Garantia
+          <span className="flex items-center gap-2.5 text-sm font-bold font-serif text-warm-900 group-hover:text-botanic-800 transition-colors">
+            <ShieldCheck className="h-4 w-4 text-emerald-700" /> Envio Seguro & Garantia Aura
           </span>
           <ChevronDown
-            className={`h-4 w-4 text-neutral-500 transition-transform duration-200 ${
-              openSection === 'shipping' ? 'rotate-180' : ''
+            className={`h-4 w-4 text-warm-500 transition-transform duration-300 ${
+              openSection === 'shipping' ? 'rotate-180 text-botanic-800' : ''
             }`}
           />
         </button>
         {openSection === 'shipping' && (
-          <div className="mt-3 text-xs text-neutral-600 space-y-1.5 leading-relaxed">
-            <p>✓ Envio com código de rastreamento pelos Correios e transportadoras parceiras.</p>
-            <p>✓ Garantia de satisfação de 7 dias após o recebimento (CDC).</p>
-            <p>✓ Produtos 100% originais com nota fiscal e selo de autenticidade.</p>
+          <div className="mt-3 text-xs text-warm-700 space-y-2 leading-relaxed">
+            <p className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-botanic-700" />
+              Envio expresso e rastreado para todo o Brasil.
+            </p>
+            <p className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-botanic-700" />
+              Troca fácil e garantida em até 30 dias após a entrega.
+            </p>
+            <p className="flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-botanic-700" />
+              Embalagem biodegradável com proteção contra quebras.
+            </p>
           </div>
         )}
       </div>

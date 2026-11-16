@@ -1,0 +1,20 @@
+$kind: http-request
+url: "{{baseUrl}}/api/admin/reports/sales/chart?days=7"
+method: GET
+headers:
+  Authorization: Bearer {{admin_token}}
+queryParams:
+  days: "7"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Retorna pontos da série temporal para renderização do gráfico", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.be.an("array");
+      });
+    language: text/javascript
+order: 3000

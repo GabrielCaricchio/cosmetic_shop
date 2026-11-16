@@ -1,0 +1,3 @@
+$kind: collection
+description: "Painel gerencial protegido: KPIs, séries temporais, CRUD de catálogo, gestão de pedidos e auditoria de travas no Redis."
+order: 9000

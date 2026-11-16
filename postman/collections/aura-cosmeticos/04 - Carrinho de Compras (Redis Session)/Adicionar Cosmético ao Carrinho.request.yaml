@@ -1,0 +1,27 @@
+$kind: http-request
+url: "{{baseUrl}}/api/cart/items"
+method: POST
+headers:
+  Content-Type: application/json
+  X-Cart-ID: "{{guest_cart_id}}"
+body:
+  type: json
+  content: |-
+    {
+      "product_id": 1,
+      "quantity": 2
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 201 Created", function () {
+          pm.response.to.have.status(201);
+      });
+
+      pm.test("Item inserido e total de itens incrementado", function () {
+          const json = pm.response.json();
+          pm.expect(json.total_items).to.be.at.least(2);
+          pm.expect(json.total_amount).to.be.above(0);
+      });
+    language: text/javascript
+order: 2000

@@ -1,0 +1,20 @@
+$kind: http-request
+url: "{{baseUrl}}/api/admin/reports/sales"
+method: GET
+headers:
+  Authorization: Bearer {{admin_token}}
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("KPIs retornados com faturamento, pedidos e alerta de estoque crítico", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("daily_revenue");
+          pm.expect(json).to.have.property("total_orders_today");
+          pm.expect(json).to.have.property("critical_stock_count");
+      });
+    language: text/javascript
+order: 2000

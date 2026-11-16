@@ -1,5 +1,6 @@
 import React from 'react';
 import { Category } from '../../types/product';
+import { Sparkles } from 'lucide-react';
 
 export interface CategoryPillsProps {
   categories: Category[];
@@ -13,17 +14,18 @@ export const CategoryPills: React.FC<CategoryPillsProps> = ({
   onSelectCategory,
 }) => {
   return (
-    <div className="w-full overflow-x-auto py-2 scrollbar-none flex items-center gap-2">
+    <div className="w-full overflow-x-auto py-2 no-scrollbar flex items-center gap-2.5 scroll-smooth">
       <button
         type="button"
         onClick={() => onSelectCategory(undefined)}
-        className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold transition-all ${
+        className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold tracking-wide transition-all duration-200 active:scale-95 ${
           !selectedCategorySlug
-            ? 'bg-neutral-900 text-white shadow-sm'
-            : 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-100'
+            ? 'bg-botanic-900 text-champagne-300 shadow-soft border border-botanic-800 ring-1 ring-botanic-700/50'
+            : 'bg-white/80 border border-warm-200 text-warm-700 hover:bg-warm-100 hover:border-warm-300 hover:text-botanic-950'
         }`}
       >
-        Todos
+        <Sparkles className="h-3 w-3" />
+        Todos os Cosméticos
       </button>
 
       {categories.map((cat) => {
@@ -33,10 +35,10 @@ export const CategoryPills: React.FC<CategoryPillsProps> = ({
             key={cat.id || cat.slug}
             type="button"
             onClick={() => onSelectCategory(cat.slug)}
-            className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold transition-all ${
+            className={`shrink-0 rounded-full px-4 py-2 text-xs font-semibold tracking-wide transition-all duration-200 active:scale-95 ${
               isSelected
-                ? 'bg-rose-600 text-white shadow-sm'
-                : 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-100'
+                ? 'bg-botanic-900 text-champagne-300 shadow-soft border border-botanic-800 ring-1 ring-botanic-700/50'
+                : 'bg-white/80 border border-warm-200 text-warm-700 hover:bg-warm-100 hover:border-warm-300 hover:text-botanic-950'
             }`}
           >
             {cat.name}

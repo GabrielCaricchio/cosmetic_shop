@@ -1,0 +1,26 @@
+$kind: http-request
+url: "{{baseUrl}}/api/login"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "email": "{{user_email}}",
+      "password": "SenhaSegura123!"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Token JWT de cliente emitido com sucesso", function () {
+          const json = pm.response.json();
+          pm.expect(json.access_token).to.be.a("string");
+          pm.collectionVariables.set("client_token", json.access_token);
+      });
+    language: text/javascript
+order: 3000

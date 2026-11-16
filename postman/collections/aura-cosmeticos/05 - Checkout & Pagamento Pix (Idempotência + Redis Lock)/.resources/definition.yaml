@@ -1,0 +1,3 @@
+$kind: collection
+description: Finalização de pedidos, reserva atômica de estoque (Lua Script no Redis) e idempotência via cabeçalho Idempotency-Key.
+order: 5000

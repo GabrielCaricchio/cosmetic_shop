@@ -1,0 +1,27 @@
+$kind: http-request
+url: "{{baseUrl}}/api/webhooks/payment"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "event": "payment.approved",
+      "order_id": "{{order_id}}",
+      "amount": 49.9,
+      "payment_method": "pix"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 200 OK", function () {
+          pm.response.to.have.status(200);
+      });
+
+      pm.test("Confirmação de recebimento do webhook", function () {
+          const json = pm.response.json();
+          pm.expect(json).to.have.property("message");
+      });
+    language: text/javascript
+order: 1000

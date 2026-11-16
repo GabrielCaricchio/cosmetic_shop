@@ -1,0 +1,3 @@
+$kind: collection
+description: Navegação e busca de produtos de beleza com tolerância a erros e acentos via pg_trgm (PostgreSQL).
+order: 3000

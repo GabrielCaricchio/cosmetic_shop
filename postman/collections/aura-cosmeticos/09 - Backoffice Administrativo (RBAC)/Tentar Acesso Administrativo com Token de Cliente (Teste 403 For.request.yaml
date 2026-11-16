@@ -1,0 +1,14 @@
+$kind: http-request
+name: Tentar Acesso Administrativo com Token de Cliente (Teste 403 Forbidden)
+url: "{{baseUrl}}/api/admin/reports/sales"
+method: GET
+headers:
+  Authorization: Bearer {{client_token}}
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code é 403 Forbidden para usuário comum", function () {
+          pm.response.to.have.status(403);
+      });
+    language: text/javascript
+order: 11000
